@@ -1,0 +1,212 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://piview.dev/protocol/v1/plan.schema.json",
+  "title": "piview protocol v1",
+  "type": "object",
+  "oneOf": [
+    { "$ref": "#/$defs/hello" },
+    { "$ref": "#/$defs/hello_ack" },
+    { "$ref": "#/$defs/plan_state" },
+    { "$ref": "#/$defs/plan_ops" },
+    { "$ref": "#/$defs/plan_replace" },
+    { "$ref": "#/$defs/execute" },
+    { "$ref": "#/$defs/refine" },
+    { "$ref": "#/$defs/set_mode" },
+    { "$ref": "#/$defs/activity" },
+    { "$ref": "#/$defs/status" },
+    { "$ref": "#/$defs/ping" },
+    { "$ref": "#/$defs/pong" },
+    { "$ref": "#/$defs/goodbye" },
+    { "$ref": "#/$defs/error" }
+  ],
+  "$defs": {
+    "PlanStepStatus": {
+      "type": "string",
+      "enum": ["pending", "active", "done", "skipped", "failed"]
+    },
+    "PlanMode": {
+      "type": "string",
+      "enum": ["off", "planning", "executing", "complete"]
+    },
+    "PlanStep": {
+      "type": "object",
+      "required": ["id", "step", "title", "status"],
+      "properties": {
+        "id": { "type": "string" },
+        "step": { "type": "integer", "minimum": 1 },
+        "title": { "type": "string" },
+        "detail": { "type": "string" },
+        "status": { "$ref": "#/$defs/PlanStepStatus" },
+        "files": { "type": "array", "items": { "type": "string" } },
+        "notes": { "type": "string" }
+      }
+    },
+    "PlanState": {
+      "type": "object",
+      "required": ["v", "mode", "steps", "updatedAt"],
+      "properties": {
+        "v": { "const": 1 },
+        "mode": { "$ref": "#/$defs/PlanMode" },
+        "title": { "type": "string" },
+        "markdown": {
+          "type": "string",
+          "description": "Full plan document in markdown (overview, rationale, and steps)"
+        },
+        "steps": { "type": "array", "items": { "$ref": "#/$defs/PlanStep" } },
+        "activeStepId": { "type": "string" },
+        "updatedAt": { "type": "integer" },
+        "sessionId": { "type": "string" },
+        "cwd": { "type": "string" }
+      }
+    },
+    "PlanOp": {
+      "type": "object",
+      "required": ["op"],
+      "properties": {
+        "op": {
+          "type": "string",
+          "enum": ["add", "update", "remove", "reorder", "set_status"]
+        },
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "detail": { "type": "string" },
+        "status": { "$ref": "#/$defs/PlanStepStatus" },
+        "notes": { "type": "string" },
+        "files": { "type": "array", "items": { "type": "string" } },
+        "afterId": { "type": "string" },
+        "order": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "hello": {
+      "type": "object",
+      "required": ["v", "type", "protocolVersion", "sessionId", "cwd"],
+      "properties": {
+        "v": { "const": 1 },
+        "type": { "const": "hello" },
+        "protocolVersion": { "const": 1 },
+        "sessionId": { "type": "string" },
+        "cwd": { "type": "string" }
+      }
+    },
+    "hello_ack": {
+      "type": "object",
+      "required": ["v", "type", "protocolVersion", "client"],
+      "properties": {
+        "v": { "const": 1 },
+        "type": { "const": "hello_ack" },
+        "protocolVersion": { "const": 1 },
+        "client": { "type": "string" }
+      }
+    },
+    "plan_state": {
+      "type": "object",
+      "required": ["v", "type", "state"],
+      "properties": {
+        "v": { "const": 1 },
+        "type": { "const": "plan_state" },
+        "state": { "$ref": "#/$defs/PlanState" }
+      }
+    },
+    "plan_ops": {
+      "type": "object",
+      "required": ["v", "type", "ops"],
+      "properties": {
+        "v": { "const": 1 },
+        "type": { "const": "plan_ops" },
+        "ops": { "type": "array", "items": { "$ref": "#/$defs/PlanOp" } }
+      }
+    },
+    "plan_replace": {
+      "type": "object",
+      "required": ["v", "type", "state"],
+      "properties": {
+        "v": { "const": 1 },
+        "type": { "const": "plan_replace" },
+        "state": { "$ref": "#/$defs/PlanState" }
+      }
+    },
+    "execute": {
+      "type": "object",
+      "required": ["v", "type"],
+      "properties": {
+        "v": { "const": 1 },
+        "type": { "const": "execute" }
+      }
+    },
+    "refine": {
+      "type": "object",
+      "required": ["v", "type", "text"],
+      "properties": {
+        "v": { "const": 1 },
+        "type": { "const": "refine" },
+        "text": { "type": "string" }
+      }
+    },
+    "set_mode": {
+      "type": "object",
+      "required": ["v", "type", "mode"],
+      "properties": {
+        "v": { "const": 1 },
+        "type": { "const": "set_mode" },
+        "mode": { "type": "string", "enum": ["off", "planning"] }
+      }
+    },
+    "activity": {
+      "type": "object",
+      "required": ["v", "type", "toolCallId", "toolName", "phase"],
+      "properties": {
+        "v": { "const": 1 },
+        "type": { "const": "activity" },
+        "toolCallId": { "type": "string" },
+        "toolName": { "type": "string" },
+        "phase": { "type": "string", "enum": ["start", "update", "end"] },
+        "summary": { "type": "string" },
+        "isError": { "type": "boolean" }
+      }
+    },
+    "status": {
+      "type": "object",
+      "required": ["v", "type"],
+      "properties": {
+        "v": { "const": 1 },
+        "type": { "const": "status" },
+        "agentIdle": { "type": "boolean" },
+        "message": { "type": "string" }
+      }
+    },
+    "ping": {
+      "type": "object",
+      "required": ["v", "type"],
+      "properties": {
+        "v": { "const": 1 },
+        "type": { "const": "ping" }
+      }
+    },
+    "pong": {
+      "type": "object",
+      "required": ["v", "type"],
+      "properties": {
+        "v": { "const": 1 },
+        "type": { "const": "pong" }
+      }
+    },
+    "goodbye": {
+      "type": "object",
+      "required": ["v", "type"],
+      "properties": {
+        "v": { "const": 1 },
+        "type": { "const": "goodbye" },
+        "reason": { "type": "string" }
+      }
+    },
+    "error": {
+      "type": "object",
+      "required": ["v", "type", "message"],
+      "properties": {
+        "v": { "const": 1 },
+        "type": { "const": "error" },
+        "message": { "type": "string" }
+      }
+    }
+  }
+}

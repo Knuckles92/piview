@@ -1,0 +1,60 @@
+{
+  "name": "piview",
+  "version": "0.1.0",
+  "description": "Plan-mode GUI companion for pi — TUI stays primary, /plangui opens a long-lived viewer",
+  "type": "module",
+  "keywords": ["pi-package", "pi", "plan-mode", "gui"],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/dtf/piview.git"
+  },
+  "bugs": {
+    "url": "https://github.com/dtf/piview/issues"
+  },
+  "homepage": "https://github.com/dtf/piview#readme",
+  "engines": {
+    "node": ">=20"
+  },
+  "files": [
+    "LICENSE",
+    "README.md",
+    "CHANGELOG.md",
+    "SECURITY.md",
+    "CONTRIBUTING.md",
+    "CODE_OF_CONDUCT.md",
+    "bin/.gitkeep",
+    "extensions/",
+    "protocol/",
+    "scripts/",
+    "viewer/",
+    "!viewer/piview",
+    "!viewer/piview.exe"
+  ],
+  "pi": {
+    "extensions": ["./extensions/piview/index.ts"]
+  },
+  "scripts": {
+    "postinstall": "bash scripts/install-viewer.sh",
+    "build:viewer": "bash scripts/build-viewer.sh",
+    "install:viewer": "bash scripts/install-viewer.sh",
+    "spike": "node scripts/spike-bridge.mjs",
+    "check": "tsc --noEmit -p extensions/piview",
+    "test": "node scripts/smoke-protocol.mjs"
+  },
+  "dependencies": {
+    "ws": "^8.18.3"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.10",
+    "@types/ws": "^8.18.1",
+    "typescript": "^5.8.2"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-agent-core": "*",
+    "@earendil-works/pi-ai": "*",
+    "@earendil-works/pi-coding-agent": "*",
+    "@earendil-works/pi-tui": "*",
+    "typebox": "*"
+  }
+}

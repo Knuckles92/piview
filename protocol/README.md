@@ -1,0 +1,40 @@
+# piview protocol v1
+
+Language-agnostic JSON protocol between the pi extension (server) and the Go companion (client).
+
+## Transport
+
+- WebSocket on `127.0.0.1` only
+- URL: `ws://127.0.0.1:<port>/v1?token=<token>`
+- Token required on connect (query param)
+- One logical session per bridge; multiple clients allowed (broadcast)
+
+## Version negotiation
+
+1. Server sends `hello` with `protocolVersion: 1`
+2. Client replies `hello_ack` with its `protocolVersion`
+3. On mismatch: client exits; server notifies TUI
+
+## Canonical state
+
+The extension owns canonical `PlanState`. The GUI may edit locally and commit via `plan_ops` or `plan_replace`.
+
+Dirty policy (v1):
+
+- GUI applies local edits immediately in the UI
+- GUI sends `plan_ops` (debounced) or `plan_replace`
+- Server applies, persists, broadcasts fresh `plan_state`
+- If a server `plan_state` arrives while GUI is dirty, GUI prompts: Keep local / Take server  
+  (v1 implementation may auto-take server on non-edit snapshots from agent extract)
+
+## Message envelope
+
+All messages are a single JSON object with at least:
+
+```json
+{ "v": 1, "type": "<message type>" }
+```
+
+## Types
+
+See `plan.schema.json` for full definitions.

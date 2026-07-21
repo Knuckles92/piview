@@ -1,0 +1,8 @@
+node_modules/
+bin/piview
+bin/piview-*
+!bin/.gitkeep
+viewer/piview
+*.log
+.DS_Store
+dist/

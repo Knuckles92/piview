@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>piview</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <div id="app">
+    <header class="top">
+      <div class="brand">
+        <span class="logo">piview</span>
+        <span id="mode" class="badge mode-off">off</span>
+      </div>
+      <div class="meta">
+        <span id="conn" class="dot offline" title="connection"></span>
+        <span id="cwd" class="cwd"></span>
+      </div>
+    </header>
+
+    <section class="toolbar">
+      <nav class="tabs" role="tablist" aria-label="Plan views">
+        <button type="button" id="tab-plan" class="tab active" role="tab" aria-selected="true" data-tab="plan">Plan</button>
+        <button type="button" id="tab-steps" class="tab" role="tab" aria-selected="false" data-tab="steps">Steps</button>
+      </nav>
+      <div class="spacer"></div>
+      <button id="btn-add" class="btn">+ Step</button>
+      <button id="btn-execute" class="btn primary">Execute</button>
+      <button id="btn-refine" class="btn">Refine…</button>
+      <button id="btn-apply" class="btn ghost" disabled>Apply edits</button>
+      <span id="progress" class="progress"></span>
+    </section>
+
+    <main id="view-plan" class="plan-view" role="tabpanel">
+      <article id="plan-md" class="plan-md markdown-body">
+        <p class="empty">No plan yet. Ask pi for a plan in plan mode.</p>
+      </article>
+    </main>
+
+    <main id="view-steps" class="layout hidden" role="tabpanel">
+      <aside class="steps-pane">
+        <div id="title-row" class="title-row">
+          <input id="plan-title" class="plan-title" placeholder="Plan title" />
+        </div>
+        <ul id="steps" class="steps"></ul>
+        <p id="empty" class="empty">No steps yet. Ask pi for a plan in plan mode, or add steps here.</p>
+      </aside>
+      <section class="detail-pane">
+        <div id="detail-empty" class="empty">Select a step</div>
+        <div id="detail" class="detail hidden">
+          <label>Title</label>
+          <input id="detail-title" />
+          <label>Detail</label>
+          <textarea id="detail-body" rows="10" placeholder="Optional detail / notes for this step"></textarea>
+          <label>Status</label>
+          <select id="detail-status">
+            <option value="pending">pending</option>
+            <option value="active">active</option>
+            <option value="done">done</option>
+            <option value="skipped">skipped</option>
+            <option value="failed">failed</option>
+          </select>
+          <div class="detail-actions">
+            <button id="btn-done" class="btn">Mark done</button>
+            <button id="btn-skip" class="btn ghost">Skip</button>
+            <button id="btn-remove" class="btn danger">Remove</button>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="bottom">
+      <span id="activity" class="activity">Idle</span>
+      <span id="dirty" class="dirty hidden">unsaved local edits</span>
+    </footer>
+  </div>
+
+  <dialog id="refine-dialog">
+    <form method="dialog" class="dialog-form">
+      <h3>Refine plan</h3>
+      <textarea id="refine-text" rows="5" placeholder="What should change about the plan?"></textarea>
+      <div class="dialog-actions">
+        <button value="cancel" class="btn ghost">Cancel</button>
+        <button id="refine-ok" value="ok" class="btn primary">Send</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script type="module" src="/app.js"></script>
+</body>
+</html>

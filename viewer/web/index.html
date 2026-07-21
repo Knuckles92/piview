@@ -25,17 +25,61 @@
         <button type="button" id="tab-steps" class="tab" role="tab" aria-selected="false" data-tab="steps">Steps</button>
       </nav>
       <div class="spacer"></div>
-      <button id="btn-add" class="btn">+ Step</button>
+      <button id="btn-add" class="btn hidden">+ Step</button>
+      <button id="btn-edit-plan" class="btn" type="button" title="Edit plan document (E)">Edit</button>
+      <button id="btn-done-edit" class="btn primary hidden" type="button" title="Finish editing">Done</button>
       <button id="btn-execute" class="btn primary">Execute</button>
       <button id="btn-refine" class="btn">Refine…</button>
       <button id="btn-apply" class="btn ghost" disabled>Apply edits</button>
       <span id="progress" class="progress"></span>
     </section>
 
-    <main id="view-plan" class="plan-view" role="tabpanel">
-      <article id="plan-md" class="plan-md markdown-body">
-        <p class="empty">No plan yet. Ask pi for a plan in plan mode.</p>
-      </article>
+    <main id="view-plan" class="plan-view" role="tabpanel" data-plan-mode="preview">
+      <div id="plan-editor-bar" class="plan-editor-bar hidden">
+        <div class="plan-mode-toggle" role="group" aria-label="Editor mode">
+          <button type="button" class="mode-btn" data-plan-view="preview" title="Preview">Preview</button>
+          <button type="button" class="mode-btn active" data-plan-view="edit" title="Edit markdown">Edit</button>
+          <button type="button" class="mode-btn" data-plan-view="split" title="Split view">Split</button>
+        </div>
+        <div id="md-toolbar" class="md-toolbar" role="toolbar" aria-label="Formatting">
+          <button type="button" class="md-btn" data-md-action="h1" title="Heading 1">H1</button>
+          <button type="button" class="md-btn" data-md-action="h2" title="Heading 2">H2</button>
+          <button type="button" class="md-btn" data-md-action="h3" title="Heading 3">H3</button>
+          <span class="md-sep" aria-hidden="true"></span>
+          <button type="button" class="md-btn" data-md-action="bold" title="Bold"><strong>B</strong></button>
+          <button type="button" class="md-btn" data-md-action="italic" title="Italic"><em>I</em></button>
+          <button type="button" class="md-btn" data-md-action="strike" title="Strikethrough"><s>S</s></button>
+          <button type="button" class="md-btn" data-md-action="code" title="Inline code">&lt;/&gt;</button>
+          <button type="button" class="md-btn" data-md-action="codeblock" title="Code block">{ }</button>
+          <span class="md-sep" aria-hidden="true"></span>
+          <button type="button" class="md-btn" data-md-action="quote" title="Quote">“ ”</button>
+          <button type="button" class="md-btn" data-md-action="ul" title="Bullet list">• List</button>
+          <button type="button" class="md-btn" data-md-action="ol" title="Numbered list">1. List</button>
+          <button type="button" class="md-btn" data-md-action="task" title="Task list">☑</button>
+          <span class="md-sep" aria-hidden="true"></span>
+          <button type="button" class="md-btn" data-md-action="link" title="Link">Link</button>
+          <button type="button" class="md-btn" data-md-action="hr" title="Horizontal rule">―</button>
+          <button type="button" class="md-btn" data-md-action="image" title="Insert image / screenshot">Image</button>
+        </div>
+        <span class="plan-editor-hint">⌘/Ctrl+S apply · drop or paste images</span>
+      </div>
+
+      <div id="plan-editor-body" class="plan-editor-body">
+        <div id="plan-drop-overlay" class="plan-drop-overlay hidden" aria-hidden="true">
+          <div class="plan-drop-card">Drop image to attach</div>
+        </div>
+        <textarea
+          id="plan-editor"
+          class="plan-editor hidden"
+          spellcheck="true"
+          aria-label="Plan markdown"
+          placeholder="# Plan title&#10;&#10;Context and approach…&#10;&#10;1. [ ] **First step**&#10;   Details for the executor"
+        ></textarea>
+        <article id="plan-md" class="plan-md markdown-body">
+          <p class="empty">No plan yet. Ask pi for a plan in plan mode.</p>
+        </article>
+      </div>
+      <input id="plan-image-input" type="file" accept="image/png,image/jpeg,image/gif,image/webp" hidden />
     </main>
 
     <main id="view-steps" class="layout hidden" role="tabpanel">

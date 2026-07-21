@@ -65,6 +65,9 @@ export default function piviewExtension(pi: ExtensionAPI): void {
 	let toolsBeforePlanMode: string[] | undefined;
 	let bridge: BridgeServer | undefined;
 	let lastCtx: ExtensionContext | undefined;
+	// True when update_plan ran during the current agent run; the chat-text
+	// fallback parser must not overwrite a plan authored via the tool.
+	let planUpdatedByTool = false;
 
 	pi.registerFlag("plan", {
 		description: "Start in plan mode (read-only exploration)",
@@ -305,9 +308,13 @@ export default function piviewExtension(pi: ExtensionAPI): void {
 				status: params.steps[i]?.status ?? ("pending" as const),
 			}));
 			const title = params.title ?? state.title;
+			// When markdown is omitted (common for mid-execution step revisions),
+			// keep the authored plan document instead of replacing it with a
+			// synthesized checklist. Only synthesize when no document ever existed.
 			const markdown =
 				params.markdown?.trim() ||
-				synthesizePlanMarkdown({ title, steps });
+				(state.markdown?.trim() ? state.markdown : synthesizePlanMarkdown({ title, steps }));
+			planUpdatedByTool = true;
 			state = {
 				...state,
 				mode: state.mode === "off" ? "planning" : state.mode,
@@ -561,8 +568,10 @@ export default function piviewExtension(pi: ExtensionAPI): void {
 
 		if (state.mode !== "planning" || !ctx.hasUI) return;
 
+		// Chat-text fallback for when update_plan is unavailable. Skip it when the
+		// tool ran this turn — a chat summary must not clobber the authored plan.
 		const lastAssistant = [...event.messages].reverse().find(isAssistantMessage);
-		if (lastAssistant) {
+		if (lastAssistant && !planUpdatedByTool) {
 			const text = getTextContent(lastAssistant);
 			const titles = extractPlanTitles(text);
 			const markdown = extractPlanMarkdown(text);
@@ -571,7 +580,7 @@ export default function piviewExtension(pi: ExtensionAPI): void {
 				state = {
 					...state,
 					steps,
-					markdown: markdown || synthesizePlanMarkdown({ title: state.title, steps }),
+					markdown: markdown || state.markdown || synthesizePlanMarkdown({ title: state.title, steps }),
 					updatedAt: Date.now(),
 				};
 				publish(ctx);
@@ -615,6 +624,7 @@ export default function piviewExtension(pi: ExtensionAPI): void {
 
 	pi.on("agent_start", async (_event, ctx) => {
 		lastCtx = ctx;
+		planUpdatedByTool = false;
 		bridge?.broadcast({ v: 1, type: "status", agentIdle: false });
 	});
 }

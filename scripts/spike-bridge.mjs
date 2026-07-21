@@ -33,6 +33,23 @@ const state = {
   cwd: root,
   sessionId: "spike",
   updatedAt: Date.now(),
+  markdown: `# Spike plan
+
+Fake bridge plan so you can try the **Plan** tab editor (Edit / Split, paste screenshots, Apply).
+
+## Approach
+
+Drive the companion UI without pi; edits come back as plan_replace messages on this process.
+
+1. [x] **Scaffold package**
+   Repo layout and package metadata
+2. [ ] **Wire WS bridge**
+   Token auth on localhost
+3. [ ] **Open Go companion UI**
+   Embedded web UI in app-mode browser
+4. [ ] **Edit steps and apply back**
+   Plan-tab markdown editor + Steps checklist
+`,
   steps: [
     { id: "s1", step: 1, title: "Scaffold package", status: "done" },
     { id: "s2", step: 2, title: "Wire WS bridge", status: "active" },

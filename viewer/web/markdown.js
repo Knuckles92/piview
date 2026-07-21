@@ -8,8 +8,35 @@ function escapeHtml(s) {
     .replace(/"/g, "&quot;");
 }
 
+/** Resolve markdown image src to a browser-safe URL, or null if disallowed. */
+export function safeImageSrc(raw) {
+  const src = String(raw || "").trim();
+  if (!src) return null;
+
+  // Workspace-relative assets written by the plan editor → local UI route
+  const piviewAsset = src.match(/^(?:\.\/)?\.piview\/assets\/([A-Za-z0-9._-]+)$/);
+  if (piviewAsset) return `/assets/${piviewAsset[1]}`;
+
+  if (/^\/assets\/[A-Za-z0-9._-]+$/.test(src)) return src;
+
+  if (/^https?:\/\//i.test(src)) return src;
+
+  // data:image/png;base64,... (and friends) — reject anything else under data:
+  if (/^data:image\/(png|jpe?g|gif|webp|svg\+xml);base64,[A-Za-z0-9+/=\s]+$/i.test(src)) {
+    return src.replace(/\s+/g, "");
+  }
+
+  return null;
+}
+
 function inlineMarkdown(text) {
   let s = escapeHtml(text);
+  // images first (before links) — ![alt](src)
+  s = s.replace(/!\[([^\]]*)\]\(([^)\s]+)\)/g, (_, alt, src) => {
+    const safe = safeImageSrc(src.replace(/&amp;/g, "&"));
+    if (!safe) return escapeHtml(`![${alt}](${src})`);
+    return `<img src="${escapeHtml(safe)}" alt="${escapeHtml(alt)}" loading="lazy" />`;
+  });
   // code
   s = s.replace(/`([^`]+)`/g, "<code>$1</code>");
   // bold / italic
@@ -113,6 +140,23 @@ export function renderMarkdown(src) {
       flushPara();
       closeList();
       out.push("<h2>Plan</h2>");
+      i++;
+      continue;
+    }
+
+    // Standalone image line → block figure-ish paragraph
+    const onlyImg = line.match(/^\s*!\[([^\]]*)\]\(([^)\s]+)\)\s*$/);
+    if (onlyImg) {
+      flushPara();
+      closeList();
+      const safe = safeImageSrc(onlyImg[2]);
+      if (safe) {
+        out.push(
+          `<p class="md-image"><img src="${escapeHtml(safe)}" alt="${escapeHtml(onlyImg[1])}" loading="lazy" /></p>`,
+        );
+      } else {
+        out.push(`<p>${inlineMarkdown(line.trim())}</p>`);
+      }
       i++;
       continue;
     }
@@ -236,4 +280,154 @@ export function synthesizePlanMarkdown(plan) {
     lines.push("");
   }
   return lines.join("\n").trim() + "\n";
+}
+
+/** Strip common markdown wrappers from a step title line. */
+export function stripStepTitleDecor(text) {
+  let t = String(text || "").trim();
+  // optional checkbox already stripped by caller; strip bold/italic/code
+  t = t.replace(/^\*\*(.+)\*\*$/, "$1");
+  t = t.replace(/^__(.+)__$/, "$1");
+  t = t.replace(/^\*(.+)\*$/, "$1");
+  t = t.replace(/^_(.+)_$/, "$1");
+  t = t.replace(/^`(.+)`$/, "$1");
+  // trailing bold markers left by partial wraps
+  t = t.replace(/\*\*$/, "").replace(/^\*\*/, "");
+  return t.trim();
+}
+
+function statusFromCheckboxMark(mark) {
+  if (!mark) return undefined;
+  const m = mark.toLowerCase();
+  if (m === "x") return "done";
+  if (m === "~") return "skipped";
+  if (m === "!") return "failed";
+  if (m === " " || m === "") return "pending";
+  return undefined;
+}
+
+/**
+ * First ATX heading (# …) becomes the plan title, if present.
+ * @param {string} md
+ * @returns {string|undefined}
+ */
+export function parsePlanTitleFromMarkdown(md) {
+  if (!md) return undefined;
+  const lines = String(md).replace(/\r\n/g, "\n").split("\n");
+  for (const line of lines) {
+    if (!line.trim()) continue;
+    // skip thematic breaks / empty
+    const h = line.match(/^#\s+(.+)$/);
+    if (h) {
+      const title = stripStepTitleDecor(h[1]);
+      return title || undefined;
+    }
+    // stop at first non-blank non-heading? Allow YAML-less docs: first real content
+    // Only treat leading H1 as title; later H1s are body.
+    break;
+  }
+  return undefined;
+}
+
+/**
+ * Parse numbered plan steps from markdown.
+ * Supports:
+ *   1. Title
+ *   2. [x] **Title**
+ *   3. [ ] Title
+ *      indented detail lines
+ *
+ * @param {string} md
+ * @returns {{ title: string, detail?: string, status?: string }[]}
+ */
+export function parseStepsFromMarkdown(md) {
+  if (!md || !String(md).trim()) return [];
+
+  const lines = String(md).replace(/\r\n/g, "\n").split("\n");
+  const steps = [];
+  let i = 0;
+  let inCode = false;
+
+  while (i < lines.length) {
+    const line = lines[i];
+
+    if (/^```/.test(line)) {
+      inCode = !inCode;
+      i++;
+      continue;
+    }
+    if (inCode) {
+      i++;
+      continue;
+    }
+
+    // Numbered item, optional checkbox
+    const m = line.match(/^\s*(\d+)[.)]\s+(?:\[([ xX~!])\]\s+)?(.+)$/);
+    if (m) {
+      const mark = m[2];
+      const title = stripStepTitleDecor(m[3]);
+      const detailLines = [];
+      while (i + 1 < lines.length && /^\s{2,}\S/.test(lines[i + 1])) {
+        i++;
+        // preserve relative indent content (trim only the list indent)
+        detailLines.push(lines[i].replace(/^\s{2,}/, ""));
+      }
+      const detail = detailLines.join("\n").trim();
+      const status = statusFromCheckboxMark(mark);
+      if (title) {
+        steps.push({
+          title,
+          detail: detail || undefined,
+          status,
+        });
+      }
+      i++;
+      continue;
+    }
+
+    i++;
+  }
+
+  return steps;
+}
+
+function newStepId() {
+  if (typeof crypto !== "undefined" && crypto.randomUUID) return crypto.randomUUID();
+  return `s-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 9)}`;
+}
+
+/**
+ * Map numbered markdown items onto existing structured steps by index.
+ * Preserves id (and status when the markdown has no checkbox) for matching indices.
+ * Resizes the list to the parsed length.
+ *
+ * @param {string} md
+ * @param {Array<{id: string, step: number, title: string, detail?: string, status: string, files?: string[], notes?: string}>} existingSteps
+ * @returns {{ title?: string, steps: typeof existingSteps }}
+ */
+export function syncStepsFromMarkdown(md, existingSteps = []) {
+  const parsed = parseStepsFromMarkdown(md);
+  const title = parsePlanTitleFromMarkdown(md);
+  const prev = Array.isArray(existingSteps) ? existingSteps : [];
+
+  const steps = parsed.map((p, index) => {
+    const old = prev[index];
+    const status =
+      p.status !== undefined
+        ? p.status
+        : old?.status && ["pending", "active", "done", "skipped", "failed"].includes(old.status)
+          ? old.status
+          : "pending";
+    return {
+      id: old?.id || newStepId(),
+      step: index + 1,
+      title: p.title || old?.title || "Untitled",
+      detail: p.detail !== undefined ? p.detail : old?.detail,
+      status,
+      files: old?.files,
+      notes: old?.notes,
+    };
+  });
+
+  return { title, steps };
 }

@@ -75,15 +75,114 @@ html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
 .detail-pane { border-right: none; background: #12151b; }
 
 .plan-view {
-  flex: 1; min-height: 0; overflow: auto; padding: 0;
+  flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: hidden; padding: 0;
   background:
     radial-gradient(1200px 500px at 10% -10%, #1a2438 0%, transparent 55%),
     var(--bg);
 }
+
+/* Plan editor chrome */
+.plan-editor-bar {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 10px 12px;
+  padding: 8px 12px; border-bottom: 1px solid var(--border);
+  background: #12151c; flex-shrink: 0;
+}
+.plan-mode-toggle {
+  display: flex; gap: 2px; padding: 2px; background: var(--panel);
+  border: 1px solid var(--border); border-radius: 9px;
+}
+.mode-btn {
+  border: none; background: transparent; color: var(--muted);
+  border-radius: 7px; padding: 5px 12px; cursor: pointer; font-size: 12px; font-weight: 500;
+}
+.mode-btn:hover { color: var(--text); }
+.mode-btn.active { background: var(--panel-2); color: var(--text); }
+.mode-btn:focus-visible, .md-btn:focus-visible, .btn:focus-visible, .tab:focus-visible {
+  outline: 2px solid var(--accent); outline-offset: 2px;
+}
+
+.md-toolbar {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 4px; flex: 1; min-width: 0;
+}
+.md-btn {
+  border: 1px solid transparent; background: transparent; color: var(--text);
+  border-radius: 6px; padding: 4px 8px; cursor: pointer; font-size: 12px; line-height: 1.2;
+  font-family: inherit;
+}
+.md-btn:hover { background: var(--panel-2); border-color: var(--border); }
+.md-btn strong { font-weight: 700; }
+.md-btn em { font-style: italic; }
+.md-sep {
+  width: 1px; height: 18px; background: var(--border); margin: 0 4px; flex-shrink: 0;
+}
+.plan-editor-hint {
+  color: var(--muted); font-size: 11px; white-space: nowrap; margin-left: auto;
+}
+
+.plan-editor-body {
+  flex: 1; min-height: 0; position: relative; display: flex; overflow: hidden;
+}
+
+/* Preview-only (default) */
+.plan-view[data-plan-mode="preview"] .plan-editor-body {
+  overflow: auto;
+}
+.plan-view[data-plan-mode="preview"] .plan-md {
+  flex: 1; max-width: 720px; margin: 0 auto; width: 100%;
+}
+
+/* Edit-only */
+.plan-view[data-plan-mode="edit"] .plan-editor {
+  flex: 1; width: 100%; max-width: none;
+}
+
+/* Split */
+.plan-view[data-plan-mode="split"] .plan-editor {
+  flex: 1; min-width: 0; border-right: 1px solid var(--border);
+}
+.plan-view[data-plan-mode="split"] .plan-md {
+  flex: 1; min-width: 0; max-width: none; margin: 0; overflow: auto;
+}
+
+.plan-editor {
+  width: 100%; height: 100%; min-height: 0; resize: none;
+  border: none; padding: 20px 24px 48px;
+  background: #0c0e13; color: var(--text);
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 13.5px; line-height: 1.55;
+  tab-size: 2;
+}
+.plan-editor:focus { outline: none; box-shadow: inset 0 0 0 1px #2a4570; }
+.plan-editor::placeholder { color: #5a6478; }
+
+.plan-drop-overlay {
+  position: absolute; inset: 0; z-index: 5;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(15, 17, 21, 0.72);
+  pointer-events: none;
+}
+.plan-drop-card {
+  padding: 18px 28px; border-radius: 12px;
+  border: 2px dashed var(--accent); background: var(--panel);
+  color: var(--text); font-weight: 600; font-size: 14px;
+}
+
 .plan-md {
   max-width: 720px; margin: 0 auto; padding: 28px 28px 48px;
   line-height: 1.6; font-size: 15px; color: var(--text);
 }
+.plan-md kbd {
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 0.85em; padding: 1px 6px; border-radius: 5px;
+  border: 1px solid var(--border); background: var(--panel-2); color: var(--muted);
+}
+.markdown-body img,
+.markdown-body .md-image img {
+  max-width: 100%; height: auto; border-radius: 10px;
+  border: 1px solid var(--border); display: block; margin: 8px 0 14px;
+  background: var(--panel);
+}
+.markdown-body .md-image { margin: 0; }
 .markdown-body h1 {
   font-size: 1.75rem; font-weight: 700; letter-spacing: -0.02em;
   margin: 0 0 16px; padding-bottom: 12px; border-bottom: 1px solid var(--border);
@@ -190,4 +289,11 @@ dialog::backdrop { background: rgba(0,0,0,0.55); }
   .steps-pane { border-right: none; border-bottom: 1px solid var(--border); max-height: 45%; }
   .plan-md { padding: 20px 16px 40px; }
   .toolbar { flex-wrap: wrap; }
+  .plan-view[data-plan-mode="split"] .plan-editor-body {
+    flex-direction: column;
+  }
+  .plan-view[data-plan-mode="split"] .plan-editor {
+    border-right: none; border-bottom: 1px solid var(--border); max-height: 45%;
+  }
+  .plan-editor-hint { display: none; }
 }

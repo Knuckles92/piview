@@ -6,6 +6,7 @@ import (
 	"io/fs"
 	"net"
 	"net/http"
+	"os"
 	"sync"
 	"time"
 
@@ -23,13 +24,14 @@ type Server struct {
 	webFS  fs.FS
 	bridge Bridge
 
-	mu      sync.RWMutex
-	state   protocol.PlanState
-	connOK  bool
-	cwd     string
-	subs    map[chan string]struct{}
-	ln      net.Listener
-	httpSrv *http.Server
+	mu           sync.RWMutex
+	state        protocol.PlanState
+	connOK       bool
+	cwd          string
+	tempAssetDir string // used when cwd is unknown
+	subs         map[chan string]struct{}
+	ln           net.Listener
+	httpSrv      *http.Server
 }
 
 func New(webFS fs.FS, bridge Bridge) *Server {
@@ -58,6 +60,9 @@ func (s *Server) SetHello(cwd string) {
 func (s *Server) SetPlan(state protocol.PlanState) {
 	s.mu.Lock()
 	s.state = state
+	if state.Cwd != "" && s.cwd == "" {
+		s.cwd = state.Cwd
+	}
 	s.mu.Unlock()
 	s.emit("state", state)
 }
@@ -100,6 +105,8 @@ func (s *Server) Start() (addr string, err error) {
 	mux.HandleFunc("/api/execute", s.handleExecute)
 	mux.HandleFunc("/api/refine", s.handleRefine)
 	mux.HandleFunc("/api/state", s.handleGetState)
+	mux.HandleFunc("/api/assets", s.handleUploadAsset)
+	mux.HandleFunc("/assets/", s.handleGetAsset)
 
 	s.httpSrv = &http.Server{Handler: mux}
 	go func() { _ = s.httpSrv.Serve(ln) }()
@@ -112,6 +119,13 @@ func (s *Server) Close() {
 	}
 	if s.ln != nil {
 		_ = s.ln.Close()
+	}
+	s.mu.Lock()
+	dir := s.tempAssetDir
+	s.tempAssetDir = ""
+	s.mu.Unlock()
+	if dir != "" {
+		_ = os.RemoveAll(dir)
 	}
 }
 

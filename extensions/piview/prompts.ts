@@ -118,4 +118,5 @@ export const UPDATE_PLAN_GUIDELINES = [
 	"markdown is the full document: context/goal, approach and rationale, numbered steps with specifics, verification, and risks/out-of-scope.",
 	"steps drive execution: short imperative titles, with file paths and specifics in each step's detail field. Keep steps consistent with the markdown.",
 	"When revising an existing plan, pass the complete updated plan (all steps), preserving statuses of steps already done.",
+	"Omitting markdown preserves the existing plan document unchanged; pass markdown only when the document itself should be rewritten.",
 ];

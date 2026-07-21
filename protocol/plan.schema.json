@@ -41,6 +41,46 @@
         "notes": { "type": "string" }
       }
     },
+    "ExecutionActivityStatus": {
+      "type": "string",
+      "enum": ["running", "completed", "error"]
+    },
+    "ExecutionActivity": {
+      "type": "object",
+      "required": ["toolCallId", "toolName", "status", "startedAt"],
+      "properties": {
+        "toolCallId": { "type": "string" },
+        "toolName": { "type": "string" },
+        "summary": { "type": "string" },
+        "path": { "type": "string" },
+        "status": { "$ref": "#/$defs/ExecutionActivityStatus" },
+        "startedAt": { "type": "integer" },
+        "endedAt": { "type": "integer" }
+      }
+    },
+    "ExecutionFile": {
+      "type": "object",
+      "required": ["path", "operation", "count", "updatedAt"],
+      "properties": {
+        "path": { "type": "string" },
+        "operation": { "type": "string", "enum": ["edit", "write"] },
+        "count": { "type": "integer", "minimum": 1 },
+        "updatedAt": { "type": "integer" }
+      }
+    },
+    "ExecutionTelemetry": {
+      "type": "object",
+      "required": ["startedAt", "updatedAt", "toolCallsStarted", "toolCallsCompleted", "toolCallsFailed", "activities", "files"],
+      "properties": {
+        "startedAt": { "type": "integer" },
+        "updatedAt": { "type": "integer" },
+        "toolCallsStarted": { "type": "integer", "minimum": 0 },
+        "toolCallsCompleted": { "type": "integer", "minimum": 0 },
+        "toolCallsFailed": { "type": "integer", "minimum": 0 },
+        "activities": { "type": "array", "items": { "$ref": "#/$defs/ExecutionActivity" } },
+        "files": { "type": "array", "items": { "$ref": "#/$defs/ExecutionFile" } }
+      }
+    },
     "PlanState": {
       "type": "object",
       "required": ["v", "mode", "steps", "updatedAt"],
@@ -56,7 +96,11 @@
         "activeStepId": { "type": "string" },
         "updatedAt": { "type": "integer" },
         "sessionId": { "type": "string" },
-        "cwd": { "type": "string" }
+        "cwd": { "type": "string" },
+        "execution": {
+          "$ref": "#/$defs/ExecutionTelemetry",
+          "description": "Optional, bounded execution history. Completion is derived as (done + skipped) / total; failed steps remain visible separately."
+        }
       }
     },
     "PlanOp": {

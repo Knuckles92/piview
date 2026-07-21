@@ -82,35 +82,81 @@
       <input id="plan-image-input" type="file" accept="image/png,image/jpeg,image/gif,image/webp" hidden />
     </main>
 
-    <main id="view-steps" class="layout hidden" role="tabpanel">
-      <aside class="steps-pane">
-        <div id="title-row" class="title-row">
-          <input id="plan-title" class="plan-title" placeholder="Plan title" />
-        </div>
-        <ul id="steps" class="steps"></ul>
-        <p id="empty" class="empty">No steps yet. Ask pi for a plan in plan mode, or add steps here.</p>
-      </aside>
-      <section class="detail-pane">
-        <div id="detail-empty" class="empty">Select a step</div>
-        <div id="detail" class="detail hidden">
-          <label>Title</label>
-          <input id="detail-title" />
-          <label>Detail</label>
-          <textarea id="detail-body" rows="10" placeholder="Optional detail / notes for this step"></textarea>
-          <label>Status</label>
-          <select id="detail-status">
-            <option value="pending">pending</option>
-            <option value="active">active</option>
-            <option value="done">done</option>
-            <option value="skipped">skipped</option>
-            <option value="failed">failed</option>
-          </select>
-          <div class="detail-actions">
-            <button id="btn-done" class="btn">Mark done</button>
-            <button id="btn-skip" class="btn ghost">Skip</button>
-            <button id="btn-remove" class="btn danger">Remove</button>
+    <main id="view-steps" class="steps-view hidden" role="tabpanel">
+      <div id="steps-editor" class="layout">
+        <aside class="steps-pane">
+          <div id="title-row" class="title-row">
+            <input id="plan-title" class="plan-title" placeholder="Plan title" />
           </div>
+          <ul id="steps" class="steps"></ul>
+          <p id="empty" class="empty">No steps yet. Ask pi for a plan in plan mode, or add steps here.</p>
+        </aside>
+        <section class="detail-pane">
+          <div id="detail-empty" class="empty">Select a step</div>
+          <div id="detail" class="detail hidden">
+            <label>Title</label>
+            <input id="detail-title" />
+            <label>Detail</label>
+            <textarea id="detail-body" rows="10" placeholder="Optional detail / notes for this step"></textarea>
+            <label>Status</label>
+            <select id="detail-status">
+              <option value="pending">pending</option>
+              <option value="active">active</option>
+              <option value="done">done</option>
+              <option value="skipped">skipped</option>
+              <option value="failed">failed</option>
+            </select>
+            <div class="detail-actions">
+              <button id="btn-done" class="btn">Mark done</button>
+              <button id="btn-skip" class="btn ghost">Skip</button>
+              <button id="btn-remove" class="btn danger">Remove</button>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <section id="execution-dashboard" class="execution-dashboard hidden" aria-labelledby="execution-title">
+        <header class="execution-hero">
+          <div>
+            <p id="execution-mode" class="execution-eyebrow">Plan execution</p>
+            <h1 id="execution-title">Executing plan</h1>
+            <p id="execution-live" class="execution-live" aria-live="polite"></p>
+            <div id="execution-status-breakdown" class="status-breakdown" aria-label="Step status breakdown"></div>
+          </div>
+          <div id="execution-progress" class="execution-progress" role="progressbar" aria-label="Plan completion" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+            <strong id="execution-percent">0%</strong>
+            <span id="execution-progress-label">0 of 0 complete</span>
+          </div>
+        </header>
+
+        <dl class="execution-metrics" aria-label="Execution metrics">
+          <div class="metric-card"><dt>Elapsed</dt><dd id="metric-elapsed">—</dd></div>
+          <div class="metric-card"><dt>Current step</dt><dd id="metric-current-step">Waiting</dd></div>
+          <div class="metric-card"><dt>Tool calls</dt><dd id="metric-tool-calls">0</dd></div>
+          <div class="metric-card"><dt>Files changed</dt><dd id="metric-files">0</dd></div>
+          <div class="metric-card metric-alert"><dt>Needs attention</dt><dd id="metric-failed">0</dd></div>
+        </dl>
+
+        <section class="execution-summary panel-card" aria-labelledby="execution-summary-title">
+          <p class="panel-label" id="execution-summary-title">Summary so far</p>
+          <p id="execution-summary-text"></p>
+        </section>
+
+        <div class="execution-columns">
+          <section class="panel-card" aria-labelledby="execution-files-title">
+            <div class="panel-heading"><p class="panel-label" id="execution-files-title">Recent file edits</p><span id="execution-files-count"></span></div>
+            <ul id="execution-files-list" class="execution-list"></ul>
+          </section>
+          <section class="panel-card" aria-labelledby="execution-activity-title">
+            <div class="panel-heading"><p class="panel-label" id="execution-activity-title">Activity</p><span id="execution-activity-count"></span></div>
+            <ul id="execution-activity-list" class="execution-list"></ul>
+          </section>
         </div>
+
+        <section class="panel-card execution-step-report" aria-labelledby="execution-steps-title">
+          <div class="panel-heading"><p class="panel-label" id="execution-steps-title">Plan steps</p><span id="execution-step-count"></span></div>
+          <ol id="execution-steps-list" class="execution-steps-list"></ol>
+        </section>
       </section>
     </main>
 

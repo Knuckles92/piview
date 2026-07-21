@@ -26,16 +26,17 @@ if (!bin) {
 }
 
 const token = randomBytes(16).toString("hex");
+const executionStartedAt = Date.now() - 92_000;
 const state = {
   v: 1,
-  mode: "planning",
-  title: "Spike plan",
+  mode: "executing",
+  title: "Execution dashboard spike",
   cwd: root,
   sessionId: "spike",
   updatedAt: Date.now(),
-  markdown: `# Spike plan
+  markdown: `# Execution dashboard spike
 
-Fake bridge plan so you can try the **Plan** tab editor (Edit / Split, paste screenshots, Apply).
+Fake bridge plan so you can inspect the live **Steps** execution dashboard, then try the Plan tab editor after switching back to planning mode.
 
 ## Approach
 
@@ -50,12 +51,26 @@ Drive the companion UI without pi; edits come back as plan_replace messages on t
 4. [ ] **Edit steps and apply back**
    Plan-tab markdown editor + Steps checklist
 `,
+  activeStepId: "s2",
   steps: [
     { id: "s1", step: 1, title: "Scaffold package", status: "done" },
-    { id: "s2", step: 2, title: "Wire WS bridge", status: "active" },
-    { id: "s3", step: 3, title: "Open Go companion UI", status: "pending" },
-    { id: "s4", step: 4, title: "Edit steps and apply back", status: "pending" },
+    { id: "s2", step: 2, title: "Wire execution telemetry", status: "active" },
+    { id: "s3", step: 3, title: "Render dashboard cards", status: "pending" },
+    { id: "s4", step: 4, title: "Verify responsive layout", status: "pending" },
   ],
+  execution: {
+    startedAt: executionStartedAt,
+    updatedAt: Date.now(),
+    toolCallsStarted: 3,
+    toolCallsCompleted: 2,
+    toolCallsFailed: 0,
+    activities: [
+      { toolCallId: "read-app", toolName: "read", summary: "read viewer/web/app.js", path: "viewer/web/app.js", status: "completed", startedAt: executionStartedAt + 1_000, endedAt: executionStartedAt + 1_300 },
+      { toolCallId: "edit-html", toolName: "edit", summary: "edit viewer/web/index.html", path: "viewer/web/index.html", status: "completed", startedAt: executionStartedAt + 1_500, endedAt: executionStartedAt + 1_900 },
+      { toolCallId: "edit-css", toolName: "edit", summary: "edit viewer/web/styles.css", path: "viewer/web/styles.css", status: "running", startedAt: executionStartedAt + 2_300 },
+    ],
+    files: [{ path: "viewer/web/index.html", operation: "edit", count: 1, updatedAt: executionStartedAt + 1_900 }],
+  },
 };
 
 const httpServer = createServer((req, res) => {
@@ -70,6 +85,9 @@ const httpServer = createServer((req, res) => {
 
 const wss = new WebSocketServer({ noServer: true });
 const clients = new Set();
+const broadcast = (message) => {
+  for (const client of clients) client.send(JSON.stringify(message));
+};
 
 httpServer.on("upgrade", (req, socket, head) => {
   const url = new URL(req.url ?? "/", "http://127.0.0.1");
@@ -85,6 +103,17 @@ wss.on("connection", (ws) => {
   clients.add(ws);
   ws.send(JSON.stringify({ v: 1, type: "hello", protocolVersion: 1, sessionId: "spike", cwd: root }));
   ws.send(JSON.stringify({ v: 1, type: "plan_state", state }));
+  setTimeout(() => {
+    if (!clients.size) return;
+    const now = Date.now();
+    const activity = state.execution.activities.find((item) => item.toolCallId === "edit-css");
+    if (activity) Object.assign(activity, { status: "completed", endedAt: now });
+    state.execution.toolCallsCompleted += 1;
+    state.execution.updatedAt = now;
+    state.execution.files.push({ path: "viewer/web/styles.css", operation: "edit", count: 1, updatedAt: now });
+    broadcast({ v: 1, type: "activity", toolCallId: "edit-css", toolName: "edit", phase: "end" });
+    broadcast({ v: 1, type: "plan_state", state });
+  }, 1_500);
   ws.on("message", (raw) => {
     let msg;
     try {
@@ -96,7 +125,7 @@ wss.on("connection", (ws) => {
     if (msg.type === "ping") ws.send(JSON.stringify({ v: 1, type: "pong" }));
     if (msg.type === "plan_replace") {
       Object.assign(state, msg.state, { v: 1, updatedAt: Date.now() });
-      for (const c of clients) c.send(JSON.stringify({ v: 1, type: "plan_state", state }));
+      broadcast({ v: 1, type: "plan_state", state });
       console.log("plan updated:", state.steps.map((s) => s.title).join(" | "));
     }
     if (msg.type === "execute") console.log("execute requested");

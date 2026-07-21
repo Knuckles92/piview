@@ -26,8 +26,11 @@ import {
 	applyOps,
 	createStepsFromTitles,
 	emptyPlanState,
+	beginExecutionTelemetry,
 	markStepStatus,
 	progress,
+	recordExecutionToolEnd,
+	recordExecutionToolStart,
 	replacePlan,
 	setMode,
 } from "./state.ts";
@@ -236,7 +239,7 @@ export default function piviewExtension(pi: ExtensionAPI): void {
 			return;
 		}
 
-		state = setMode(state, "executing");
+		state = beginExecutionTelemetry(setMode(state, "executing"));
 		// Mark first pending as active
 		const first = state.steps.find((s) => s.status === "pending");
 		if (first) {
@@ -465,14 +468,24 @@ export default function piviewExtension(pi: ExtensionAPI): void {
 	});
 
 	pi.on("tool_execution_start", async (event) => {
+		const summary = summarizeArgs(event.toolName, event.args);
 		bridge?.broadcast({
 			v: 1,
 			type: "activity",
 			toolCallId: event.toolCallId,
 			toolName: event.toolName,
 			phase: "start",
-			summary: summarizeArgs(event.toolName, event.args),
+			summary,
 		});
+		if (state.mode === "executing") {
+			state = recordExecutionToolStart(state, {
+				toolCallId: event.toolCallId,
+				toolName: event.toolName,
+				summary,
+				path: toolPath(event.args),
+			});
+			publish();
+		}
 	});
 
 	pi.on("tool_execution_end", async (event) => {
@@ -484,6 +497,14 @@ export default function piviewExtension(pi: ExtensionAPI): void {
 			phase: "end",
 			isError: event.isError,
 		});
+		if (state.mode === "executing") {
+			state = recordExecutionToolEnd(state, {
+				toolCallId: event.toolCallId,
+				toolName: event.toolName,
+				isError: event.isError,
+			});
+			publish();
+		}
 	});
 
 	pi.on("context", async (event) => {
@@ -627,6 +648,12 @@ export default function piviewExtension(pi: ExtensionAPI): void {
 		planUpdatedByTool = false;
 		bridge?.broadcast({ v: 1, type: "status", agentIdle: false });
 	});
+}
+
+function toolPath(args: unknown): string | undefined {
+	if (!args || typeof args !== "object") return undefined;
+	const path = (args as Record<string, unknown>).path;
+	return typeof path === "string" ? path : undefined;
 }
 
 function summarizeArgs(toolName: string, args: unknown): string {

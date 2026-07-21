@@ -31,16 +31,46 @@ type PlanStep struct {
 	Notes  string     `json:"notes,omitempty"`
 }
 
+type ExecutionActivity struct {
+	ToolCallID string `json:"toolCallId"`
+	ToolName   string `json:"toolName"`
+	Summary    string `json:"summary,omitempty"`
+	Path       string `json:"path,omitempty"`
+	Status     string `json:"status"`
+	StartedAt  int64  `json:"startedAt"`
+	EndedAt    int64  `json:"endedAt,omitempty"`
+}
+
+type ExecutionFile struct {
+	Path      string `json:"path"`
+	Operation string `json:"operation"`
+	Count     int    `json:"count"`
+	UpdatedAt int64  `json:"updatedAt"`
+}
+
+// ExecutionTelemetry is optional so viewers can continue to render saved v1 plans
+// created before execution metrics were introduced.
+type ExecutionTelemetry struct {
+	StartedAt          int64               `json:"startedAt"`
+	UpdatedAt          int64               `json:"updatedAt"`
+	ToolCallsStarted   int                 `json:"toolCallsStarted"`
+	ToolCallsCompleted int                 `json:"toolCallsCompleted"`
+	ToolCallsFailed    int                 `json:"toolCallsFailed"`
+	Activities         []ExecutionActivity `json:"activities"`
+	Files              []ExecutionFile     `json:"files"`
+}
+
 type PlanState struct {
-	V            int        `json:"v"`
-	Mode         Mode       `json:"mode"`
-	Title        string     `json:"title,omitempty"`
-	Markdown     string     `json:"markdown,omitempty"`
-	Steps        []PlanStep `json:"steps"`
-	ActiveStepID string     `json:"activeStepId,omitempty"`
-	UpdatedAt    int64      `json:"updatedAt"`
-	SessionID    string     `json:"sessionId,omitempty"`
-	Cwd          string     `json:"cwd,omitempty"`
+	V            int                 `json:"v"`
+	Mode         Mode                `json:"mode"`
+	Title        string              `json:"title,omitempty"`
+	Markdown     string              `json:"markdown,omitempty"`
+	Steps        []PlanStep          `json:"steps"`
+	ActiveStepID string              `json:"activeStepId,omitempty"`
+	UpdatedAt    int64               `json:"updatedAt"`
+	SessionID    string              `json:"sessionId,omitempty"`
+	Cwd          string              `json:"cwd,omitempty"`
+	Execution    *ExecutionTelemetry `json:"execution,omitempty"`
 }
 
 // Envelope is used for decoding by type field.

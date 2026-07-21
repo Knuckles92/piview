@@ -3,7 +3,15 @@
  * Automated smoke: extension bridge module + ws client round-trip.
  */
 import { createBridgeServer } from "../extensions/piview/bridge/server.ts";
-import { emptyPlanState, applyOps, createStepsFromTitles } from "../extensions/piview/state.ts";
+import {
+  applyOps,
+  beginExecutionTelemetry,
+  createStepsFromTitles,
+  emptyPlanState,
+  recordExecutionToolEnd,
+  recordExecutionToolStart,
+} from "../extensions/piview/state.ts";
+import { executionDashboardModel, formatDuration } from "../viewer/web/execution-dashboard.js";
 import { ensurePlanMarkdown } from "../viewer/web/markdown.js";
 import WebSocket from "ws";
 
@@ -17,6 +25,41 @@ if (ensurePlanMarkdown(editedPlan) !== authoredMarkdown) {
 }
 if (!ensurePlanMarkdown({ title: "Step-only plan", steps: editedPlan.steps }).startsWith("# Step-only plan")) {
   throw new Error("step-only plans must receive synthesized markdown");
+}
+
+let telemetryState = beginExecutionTelemetry(
+  emptyPlanState({
+    mode: "executing",
+    steps: [
+      { id: "done", step: 1, title: "Scaffold", status: "done" },
+      { id: "skip", step: 2, title: "No longer needed", status: "skipped" },
+      { id: "active", step: 3, title: "Build dashboard", status: "active" },
+      { id: "failed", step: 4, title: "Check edge case", status: "failed" },
+    ],
+    activeStepId: "active",
+  }),
+  1_000,
+);
+telemetryState = recordExecutionToolStart(telemetryState, { toolCallId: "edit-1", toolName: "edit", path: "viewer/web/app.js" }, 1_100);
+telemetryState = recordExecutionToolEnd(telemetryState, { toolCallId: "edit-1", toolName: "edit" }, 1_200);
+telemetryState = recordExecutionToolStart(telemetryState, { toolCallId: "write-1", toolName: "write", path: "viewer/web/app.js" }, 1_300);
+telemetryState = recordExecutionToolEnd(telemetryState, { toolCallId: "write-1", toolName: "write", isError: true }, 1_400);
+if (telemetryState.execution?.toolCallsCompleted !== 2 || telemetryState.execution.toolCallsFailed !== 1) {
+  throw new Error("execution telemetry must count completed and failed tools");
+}
+if (telemetryState.execution.files.length !== 1 || telemetryState.execution.files[0].count !== 1) {
+  throw new Error("only successful edit/write calls should become changed-file metrics");
+}
+const dashboard = executionDashboardModel(telemetryState, 61_000);
+if (dashboard.percent !== 50 || dashboard.changedFiles !== 1 || dashboard.counts.failed !== 1 || dashboard.activeStep?.id !== "active") {
+  throw new Error("dashboard metrics must include skipped progress and failed-step visibility");
+}
+if (formatDuration(dashboard.elapsedMs) !== "1m 0s" || !dashboard.summary.includes("Working on step 3")) {
+  throw new Error("dashboard summary and duration must describe active execution");
+}
+const legacyDashboard = executionDashboardModel({ v: 1, mode: "executing", steps: [], updatedAt: 0 });
+if (legacyDashboard.toolCallsStarted !== 0 || legacyDashboard.elapsedMs !== null) {
+  throw new Error("older plans without telemetry must render safe dashboard defaults");
 }
 
 bridge.onClientMessage((msg) => {

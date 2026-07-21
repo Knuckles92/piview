@@ -4,6 +4,38 @@ export const PROTOCOL_VERSION = 1 as const;
 
 export type PlanStepStatus = "pending" | "active" | "done" | "skipped" | "failed";
 export type PlanMode = "off" | "planning" | "executing" | "complete";
+export type ExecutionActivityStatus = "running" | "completed" | "error";
+export type ExecutionFileOperation = "edit" | "write";
+
+/** Compact, persisted record of a tool call made during plan execution. */
+export interface ExecutionActivity {
+	toolCallId: string;
+	toolName: string;
+	summary?: string;
+	path?: string;
+	status: ExecutionActivityStatus;
+	startedAt: number;
+	endedAt?: number;
+}
+
+/** A successfully changed file, deduplicated by workspace-relative path. */
+export interface ExecutionFile {
+	path: string;
+	operation: ExecutionFileOperation;
+	count: number;
+	updatedAt: number;
+}
+
+/** Bounded execution history used by reconnecting viewers to render live metrics. */
+export interface ExecutionTelemetry {
+	startedAt: number;
+	updatedAt: number;
+	toolCallsStarted: number;
+	toolCallsCompleted: number;
+	toolCallsFailed: number;
+	activities: ExecutionActivity[];
+	files: ExecutionFile[];
+}
 
 export interface PlanStep {
 	id: string;
@@ -26,6 +58,8 @@ export interface PlanState {
 	updatedAt: number;
 	sessionId?: string;
 	cwd?: string;
+	/** Optional v1-compatible execution history; absent on older saved plans. */
+	execution?: ExecutionTelemetry;
 }
 
 export type PlanOp =

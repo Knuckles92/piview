@@ -1,5 +1,13 @@
 import { randomUUID } from "node:crypto";
-import type { PlanMode, PlanOp, PlanState, PlanStep, PlanStepStatus } from "./protocol.ts";
+import type {
+	ExecutionActivity,
+	ExecutionFileOperation,
+	PlanMode,
+	PlanOp,
+	PlanState,
+	PlanStep,
+	PlanStepStatus,
+} from "./protocol.ts";
 
 export const PLAN_ENTRY_TYPE = "piview-plan";
 
@@ -111,6 +119,7 @@ export function replacePlan(state: PlanState, incoming: PlanState): PlanState {
 		v: 1,
 		sessionId: incoming.sessionId ?? state.sessionId,
 		cwd: incoming.cwd ?? state.cwd,
+		execution: incoming.execution ?? state.execution,
 		updatedAt: Date.now(),
 		steps: renumber(
 			incoming.steps.map((s) => ({
@@ -145,4 +154,125 @@ export function progress(state: PlanState): { done: number; total: number } {
 	const total = state.steps.length;
 	const done = state.steps.filter((s) => s.status === "done" || s.status === "skipped").length;
 	return { done, total };
+}
+
+/** Count steps by each PlanStepStatus. Pure; zeros for missing statuses. */
+export function countByStatus(steps: PlanStep[]): Record<PlanStepStatus, number> {
+	const counts: Record<PlanStepStatus, number> = {
+		pending: 0,
+		active: 0,
+		done: 0,
+		skipped: 0,
+		failed: 0,
+	};
+	for (const step of steps) {
+		counts[step.status] += 1;
+	}
+	return counts;
+}
+
+const MAX_EXECUTION_ACTIVITIES = 24;
+const MAX_EXECUTION_FILES = 48;
+
+/** Start a fresh, bounded execution history for a newly approved plan run. */
+export function beginExecutionTelemetry(state: PlanState, now = Date.now()): PlanState {
+	return {
+		...state,
+		execution: {
+			startedAt: now,
+			updatedAt: now,
+			toolCallsStarted: 0,
+			toolCallsCompleted: 0,
+			toolCallsFailed: 0,
+			activities: [],
+			files: [],
+		},
+		updatedAt: now,
+	};
+}
+
+/** Record a tool start while retaining enough context to attribute a later edit. */
+export function recordExecutionToolStart(
+	state: PlanState,
+	input: { toolCallId: string; toolName: string; summary?: string; path?: string },
+	now = Date.now(),
+): PlanState {
+	const execution = state.execution ?? beginExecutionTelemetry(state, now).execution!;
+	if (execution.activities.some((activity) => activity.toolCallId === input.toolCallId)) return state;
+	const activity: ExecutionActivity = {
+		toolCallId: input.toolCallId,
+		toolName: input.toolName,
+		summary: input.summary,
+		path: input.path,
+		status: "running",
+		startedAt: now,
+	};
+	return {
+		...state,
+		execution: {
+			...execution,
+			updatedAt: now,
+			toolCallsStarted: execution.toolCallsStarted + 1,
+			activities: [...execution.activities, activity].slice(-MAX_EXECUTION_ACTIVITIES),
+		},
+		updatedAt: now,
+	};
+}
+
+/** Finalize a recorded tool call and count successful edit/write operations by path. */
+export function recordExecutionToolEnd(
+	state: PlanState,
+	input: { toolCallId: string; toolName: string; isError?: boolean },
+	now = Date.now(),
+): PlanState {
+	const execution = state.execution;
+	if (!execution) return state;
+	const old = execution.activities.find((activity) => activity.toolCallId === input.toolCallId);
+	if (old && old.status !== "running") return state;
+	const activity: ExecutionActivity = old
+		? { ...old, status: input.isError ? "error" : "completed", endedAt: now }
+		: {
+				toolCallId: input.toolCallId,
+				toolName: input.toolName,
+				status: input.isError ? "error" : "completed",
+				startedAt: now,
+				endedAt: now,
+			};
+	const activities = old
+		? execution.activities.map((item) => (item.toolCallId === input.toolCallId ? activity : item))
+		: [...execution.activities, activity].slice(-MAX_EXECUTION_ACTIVITIES);
+	const files = !input.isError && isFileEdit(activity) && activity.path
+		? recordEditedFile(execution.files, activity.path, activity.toolName, now)
+		: execution.files;
+	return {
+		...state,
+		execution: {
+			...execution,
+			updatedAt: now,
+			toolCallsCompleted: execution.toolCallsCompleted + 1,
+			toolCallsFailed: execution.toolCallsFailed + (input.isError ? 1 : 0),
+			activities,
+			files,
+		},
+		updatedAt: now,
+	};
+}
+
+function isFileEdit(activity: ExecutionActivity): activity is ExecutionActivity & { toolName: ExecutionFileOperation } {
+	return activity.toolName === "edit" || activity.toolName === "write";
+}
+
+function recordEditedFile(
+	files: NonNullable<PlanState["execution"]>["files"],
+	path: string,
+	operation: ExecutionFileOperation,
+	now: number,
+) {
+	const existing = files.find((file) => file.path === path);
+	if (existing) {
+		return files.map((file) =>
+			file.path === path ? { ...file, operation, count: file.count + 1, updatedAt: now } : file,
+		);
+	}
+	return [...files, { path, operation, count: 1, updatedAt: now }].slice(-MAX_EXECUTION_FILES);
 }

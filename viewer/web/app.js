@@ -1,6 +1,7 @@
 /* piview frontend — talks to local Go UI bridge via /api/* and event stream */
 
 import { bindToolbar, insertImage } from "./editor.js";
+import { executionDashboardModel, formatDuration } from "./execution-dashboard.js";
 import {
   ensurePlanMarkdown,
   renderMarkdown,
@@ -60,12 +61,19 @@ function renderPlanMarkdown(src) {
   el.innerHTML = renderMarkdown(src);
 }
 
+function isExecutionDashboard(plan = state.plan) {
+  return plan.mode === "executing" || plan.mode === "complete";
+}
+
 function updatePlanChrome() {
   const isPlan = state.tab === "plan";
-  const editing = isPlan && state.editing;
-  $("btn-edit-plan")?.classList.toggle("hidden", !isPlan || editing);
+  const locked = isExecutionDashboard();
+  const editing = isPlan && state.editing && !locked;
+  $("btn-edit-plan")?.classList.toggle("hidden", !isPlan || editing || locked);
   $("btn-done-edit")?.classList.toggle("hidden", !editing);
-  $("btn-add")?.classList.toggle("hidden", isPlan);
+  $("btn-add")?.classList.toggle("hidden", isPlan || locked);
+  $("btn-execute")?.classList.toggle("hidden", locked);
+  $("btn-apply")?.classList.toggle("hidden", locked);
   $("plan-editor-bar")?.classList.toggle("hidden", !editing);
 
   const view = state.editing ? state.planView : "preview";
@@ -110,6 +118,7 @@ function setPlanView(view) {
 }
 
 function enterPlanEdit(preferredView) {
+  if (isExecutionDashboard()) return;
   if (state.tab !== "plan") setTab("plan");
   if (!state.editing) {
     state.editing = true;
@@ -141,6 +150,98 @@ async function exitPlanEdit({ applyIfDirty = true } = {}) {
   renderPlanMarkdown(planMarkdownSource(state.plan));
 }
 
+function renderExecutionDashboard(plan) {
+  const model = executionDashboardModel(plan);
+  const complete = plan.mode === "complete";
+  const active = model.activeStep;
+  const running = model.runningActivity;
+  $("steps-editor").classList.add("hidden");
+  $("execution-dashboard").classList.remove("hidden");
+  $("execution-mode").textContent = complete ? "Execution complete" : "Plan execution";
+  $("execution-title").textContent = plan.title || (complete ? "Plan complete" : "Executing plan");
+  $("execution-percent").textContent = `${model.percent}%`;
+  $("execution-progress-label").textContent = `${model.completed} of ${model.total} complete`;
+  const progress = $("execution-progress");
+  progress.style.setProperty("--progress", `${model.percent}%`);
+  progress.setAttribute("aria-valuenow", String(model.percent));
+  $("execution-live").textContent = complete
+    ? "All execution activity has settled."
+    : running
+      ? `Running ${running.summary || running.toolName}${running.path ? ` · ${running.path}` : ""}`
+      : active
+        ? `Working on step ${active.step}: ${active.title || "Untitled step"}`
+        : "Waiting for the next step.";
+  renderStatusBreakdown($("execution-status-breakdown"), model.counts);
+  $("metric-elapsed").textContent = formatDuration(model.elapsedMs);
+  $("metric-current-step").textContent = active ? `#${active.step}` : complete ? "Complete" : "Waiting";
+  $("metric-tool-calls").textContent = `${model.toolCallsCompleted}/${model.toolCallsStarted}`;
+  $("metric-files").textContent = `${model.changedFiles} · ${model.fileEdits} edits`;
+  $("metric-failed").textContent = String(model.counts.failed);
+  $("execution-summary-text").textContent = model.summary;
+  $("execution-files-count").textContent = `${model.changedFiles} files`;
+  $("execution-activity-count").textContent = `${model.toolCallsCompleted} complete`;
+  $("execution-step-count").textContent = `${model.completed}/${model.total} complete`;
+
+  renderExecutionList($("execution-files-list"), model.recentFiles, "No successful file edits recorded yet.", (file) => {
+    const row = document.createElement("li");
+    row.className = "execution-list-row";
+    const path = document.createElement("code");
+    path.textContent = file.path;
+    const meta = document.createElement("span");
+    meta.textContent = `${file.operation} · ${file.count}×`;
+    row.append(path, meta);
+    return row;
+  });
+  renderExecutionList($("execution-activity-list"), model.recentActivity, "Waiting for tool activity…", (activity) => {
+    const row = document.createElement("li");
+    row.className = `execution-list-row activity-${activity.status}`;
+    const label = document.createElement("span");
+    label.textContent = activity.summary || `${activity.toolName}${activity.path ? ` ${activity.path}` : ""}`;
+    const meta = document.createElement("span");
+    meta.textContent = activity.status === "running" ? "running" : activity.status === "error" ? "error" : "done";
+    row.append(label, meta);
+    return row;
+  });
+  renderExecutionList($("execution-steps-list"), plan.steps || [], "No plan steps available.", (step) => {
+    const row = document.createElement("li");
+    row.className = `execution-step ${step.status}`;
+    const number = document.createElement("span");
+    number.className = "execution-step-number";
+    number.textContent = String(step.step);
+    const title = document.createElement("span");
+    title.className = "execution-step-title";
+    title.textContent = step.title || "Untitled step";
+    const status = document.createElement("span");
+    status.className = "execution-step-status";
+    status.textContent = step.status;
+    row.append(number, title, status);
+    return row;
+  });
+}
+
+function renderStatusBreakdown(container, counts) {
+  container.replaceChildren();
+  for (const status of ["done", "active", "pending", "skipped", "failed"]) {
+    if (!counts[status]) continue;
+    const chip = document.createElement("span");
+    chip.className = `status-chip ${status}`;
+    chip.textContent = `${counts[status]} ${status}`;
+    container.append(chip);
+  }
+}
+
+function renderExecutionList(list, items, emptyText, createRow) {
+  list.replaceChildren();
+  if (!items.length) {
+    const empty = document.createElement("li");
+    empty.className = "execution-empty";
+    empty.textContent = emptyText;
+    list.append(empty);
+    return;
+  }
+  for (const item of items) list.append(createRow(item));
+}
+
 function render() {
   const plan = state.plan;
   const modeEl = $("mode");
@@ -158,6 +259,13 @@ function render() {
     renderPlanMarkdown(planMarkdownSource(plan));
   }
   updatePlanChrome();
+
+  if (isExecutionDashboard(plan)) {
+    renderExecutionDashboard(plan);
+    return;
+  }
+  $("steps-editor").classList.remove("hidden");
+  $("execution-dashboard").classList.add("hidden");
 
   const list = $("steps");
   list.innerHTML = "";
@@ -201,6 +309,7 @@ function selected() {
 }
 
 function mutateLocal(fn) {
+  if (isExecutionDashboard()) return;
   fn(state.plan);
   state.plan.updatedAt = Date.now();
   state.plan.steps.forEach((s, i) => {
@@ -552,7 +661,14 @@ function connectEvents() {
   es.addEventListener("state", (ev) => {
     try {
       const plan = JSON.parse(ev.data);
-      if (state.dirty || state.editing) {
+      if (isExecutionDashboard(plan)) {
+        const prev = state.selectedId;
+        state.plan = plan;
+        state.dirty = false;
+        state.editing = false;
+        state.editingDraft = null;
+        if (!plan.steps?.some((s) => s.id === prev)) state.selectedId = plan.steps?.[0]?.id ?? null;
+      } else if (state.dirty || state.editing) {
         state.plan.cwd = plan.cwd || state.plan.cwd;
         state.plan.mode = plan.mode || state.plan.mode;
       } else {
@@ -562,6 +678,7 @@ function connectEvents() {
           state.selectedId = plan.steps?.[0]?.id ?? null;
         }
       }
+      setDirty(state.dirty);
       render();
     } catch {
       /* ignore */
@@ -607,3 +724,6 @@ wire();
 setTab("plan");
 connectEvents();
 render();
+setInterval(() => {
+  if (state.tab === "steps" && isExecutionDashboard()) renderExecutionDashboard(state.plan);
+}, 1000);

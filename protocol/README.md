@@ -19,6 +19,8 @@ Language-agnostic JSON protocol between the pi extension (server) and the Go com
 
 The extension owns canonical `PlanState`. The GUI may edit locally and commit via `plan_ops` or `plan_replace`.
 
+During execution, the optional `PlanState.execution` object carries a bounded activity and successful-file-edit history so reconnecting viewers can render live metrics. Progress remains `(done + skipped) / total`; failed steps are reported separately and do not count as complete.
+
 Dirty policy (v1):
 
 - GUI applies local edits immediately in the UI

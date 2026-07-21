@@ -204,6 +204,15 @@ export function syncMarkdownCheckboxes(md, steps) {
   return out;
 }
 
+/**
+ * Keep an authored plan document intact when persisting checklist edits.
+ * Plans that originated as structured steps still need a readable document,
+ * so synthesize one only when no markdown was supplied.
+ */
+export function ensurePlanMarkdown(plan) {
+  return (plan.markdown || "").trim() ? plan.markdown : synthesizePlanMarkdown(plan);
+}
+
 /** Synthesize markdown from structured steps when no document was provided. */
 export function synthesizePlanMarkdown(plan) {
   const lines = [];

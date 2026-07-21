@@ -1,6 +1,6 @@
 /* piview frontend — talks to local Go UI bridge via /api/* and event stream */
 
-import { renderMarkdown, synthesizePlanMarkdown, syncMarkdownCheckboxes } from "./markdown.js";
+import { ensurePlanMarkdown, renderMarkdown, synthesizePlanMarkdown, syncMarkdownCheckboxes } from "./markdown.js";
 
 const state = {
   plan: { v: 1, mode: "off", steps: [], updatedAt: 0 },
@@ -113,8 +113,6 @@ function mutateLocal(fn) {
   state.plan.steps.forEach((s, i) => {
     s.step = i + 1;
   });
-  // Clear stored markdown so the Plan tab synthesizes from edited steps
-  state.plan.markdown = "";
   setDirty(true);
   render();
 }
@@ -133,8 +131,9 @@ async function api(path, body) {
 }
 
 async function applyEdits() {
-  // Persist synthesized markdown with edited steps
-  state.plan.markdown = synthesizePlanMarkdown(state.plan);
+  // Preserve the authored document. Only step-only plans need a synthesized
+  // document, otherwise editing the checklist would discard plan context.
+  state.plan.markdown = ensurePlanMarkdown(state.plan);
   await api("/api/replace", { state: state.plan });
   setDirty(false);
   $("activity").textContent = "Edits applied to pi";

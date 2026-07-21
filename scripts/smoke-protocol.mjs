@@ -4,10 +4,20 @@
  */
 import { createBridgeServer } from "../extensions/piview/bridge/server.ts";
 import { emptyPlanState, applyOps, createStepsFromTitles } from "../extensions/piview/state.ts";
+import { ensurePlanMarkdown } from "../viewer/web/markdown.js";
 import WebSocket from "ws";
 
 const bridge = createBridgeServer({ sessionId: "smoke", cwd: process.cwd() });
 let gotOps = false;
+
+const authoredMarkdown = "# Release plan\n\nKeep this context and rationale.\n";
+const editedPlan = { markdown: authoredMarkdown, steps: [{ step: 1, title: "Edited step", status: "pending" }] };
+if (ensurePlanMarkdown(editedPlan) !== authoredMarkdown) {
+  throw new Error("applying step edits must preserve authored plan markdown");
+}
+if (!ensurePlanMarkdown({ title: "Step-only plan", steps: editedPlan.steps }).startsWith("# Step-only plan")) {
+  throw new Error("step-only plans must receive synthesized markdown");
+}
 
 bridge.onClientMessage((msg) => {
   if (msg.type === "plan_ops") {

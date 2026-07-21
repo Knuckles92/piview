@@ -99,6 +99,9 @@ export async function openViewer(opts: OpenViewerOptions): Promise<OpenViewerRes
 				detached: true,
 				stdio: "ignore",
 			});
+			// Without a handler, a missing binary emits an unhandled "error"
+			// event and crashes the host process.
+			focus.on("error", () => {});
 			focus.unref();
 			lastWsUrl = opts.wsUrl;
 			const { uiUrl } = await waitForUiUrl({ wsUrl: opts.wsUrl });
@@ -151,6 +154,9 @@ export function quitViewer(): void {
 	if (bin) {
 		try {
 			const p = spawn(bin, ["quit"], { detached: true, stdio: "ignore" });
+			// Without a handler, a missing binary emits an unhandled "error"
+			// event and crashes the host process (spawn piview ENOENT).
+			p.on("error", () => {});
 			p.unref();
 		} catch {
 			/* ignore */

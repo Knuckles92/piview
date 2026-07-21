@@ -51,24 +51,31 @@ export function readUiUrl(): string | undefined {
 	}
 }
 
-async function waitForUiUrl(opts: { wsUrl: string; timeoutMs?: number }): Promise<string | undefined> {
+async function waitForUiUrl(opts: {
+	wsUrl: string;
+	timeoutMs?: number;
+	/** Return an error string to abort the wait early (e.g. spawn failed). */
+	failed?: () => string | undefined;
+}): Promise<{ uiUrl?: string; error?: string }> {
 	const timeoutMs = opts.timeoutMs ?? 4000;
 	const start = Date.now();
 	while (Date.now() - start < timeoutMs) {
+		const failure = opts.failed?.();
+		if (failure) return { error: failure };
 		try {
 			const info = JSON.parse(readFileSync(instanceJsonPath(), "utf8")) as {
 				uiAddr?: string;
 				wsUrl?: string;
 			};
 			if (info.uiAddr && info.wsUrl === opts.wsUrl) {
-				return `http://${info.uiAddr}/`;
+				return { uiUrl: `http://${info.uiAddr}/` };
 			}
 		} catch {
 			/* not ready yet */
 		}
 		await new Promise((r) => setTimeout(r, 50));
 	}
-	return undefined;
+	return {};
 }
 
 export interface OpenViewerOptions {
@@ -94,7 +101,7 @@ export async function openViewer(opts: OpenViewerOptions): Promise<OpenViewerRes
 			});
 			focus.unref();
 			lastWsUrl = opts.wsUrl;
-			const uiUrl = await waitForUiUrl({ wsUrl: opts.wsUrl });
+			const { uiUrl } = await waitForUiUrl({ wsUrl: opts.wsUrl });
 			lastUiUrl = uiUrl;
 			return { ok: true, bin, uiUrl };
 		} catch {
@@ -107,20 +114,31 @@ export async function openViewer(opts: OpenViewerOptions): Promise<OpenViewerRes
 		if (opts.title) args.push("--title", opts.title);
 		if (opts.cwd) args.push("--cwd", opts.cwd);
 
+		// spawn() reports a missing binary asynchronously via the "error"
+		// event, so capture it and surface it instead of timing out silently.
+		let spawnError: string | undefined;
 		child = spawn(bin, args, {
 			detached: true,
 			stdio: "ignore",
 			env: { ...process.env },
 		});
 		child.unref();
-		child.on("error", () => {
+		child.on("error", (err) => {
+			spawnError = err.message;
 			child = undefined;
 		});
-		child.on("exit", () => {
+		child.on("exit", (code) => {
+			if (code !== null && code !== 0) {
+				spawnError = spawnError ?? `${bin} exited with code ${code}`;
+			}
 			child = undefined;
 		});
 		lastWsUrl = opts.wsUrl;
-		const uiUrl = await waitForUiUrl({ wsUrl: opts.wsUrl });
+		const { uiUrl, error } = await waitForUiUrl({
+			wsUrl: opts.wsUrl,
+			failed: () => spawnError,
+		});
+		if (error) return { ok: false, error };
 		lastUiUrl = uiUrl;
 		return { ok: true, bin, uiUrl };
 	} catch (err) {

@@ -11,8 +11,8 @@ import {
   recordExecutionToolEnd,
   recordExecutionToolStart,
 } from "../extensions/piview/state.ts";
-import { executionDashboardModel, formatDuration } from "../viewer/web/execution-dashboard.js";
-import { ensurePlanMarkdown, parseOutline, renderMarkdown } from "../viewer/web/markdown.js";
+import { executionDashboardModel, formatDuration } from "../extensions/piview/web/execution-dashboard.js";
+import { ensurePlanMarkdown, parseOutline, renderMarkdown } from "../extensions/piview/web/markdown.js";
 import WebSocket from "ws";
 
 const bridge = createBridgeServer({ sessionId: "smoke", cwd: process.cwd() });
@@ -58,9 +58,9 @@ let telemetryState = beginExecutionTelemetry(
   }),
   1_000,
 );
-telemetryState = recordExecutionToolStart(telemetryState, { toolCallId: "edit-1", toolName: "edit", path: "viewer/web/app.js" }, 1_100);
+telemetryState = recordExecutionToolStart(telemetryState, { toolCallId: "edit-1", toolName: "edit", path: "extensions/piview/web/app.js" }, 1_100);
 telemetryState = recordExecutionToolEnd(telemetryState, { toolCallId: "edit-1", toolName: "edit" }, 1_200);
-telemetryState = recordExecutionToolStart(telemetryState, { toolCallId: "write-1", toolName: "write", path: "viewer/web/app.js" }, 1_300);
+telemetryState = recordExecutionToolStart(telemetryState, { toolCallId: "write-1", toolName: "write", path: "extensions/piview/web/app.js" }, 1_300);
 telemetryState = recordExecutionToolEnd(telemetryState, { toolCallId: "write-1", toolName: "write", isError: true }, 1_400);
 if (telemetryState.execution?.toolCallsCompleted !== 2 || telemetryState.execution.toolCallsFailed !== 1) {
   throw new Error("execution telemetry must count completed and failed tools");
@@ -99,7 +99,23 @@ bridge.onClientMessage((msg) => {
 
 await bridge.start();
 const url = bridge.getConnectUrl();
+const uiUrl = bridge.getUiUrl();
 console.log("bridge", url);
+console.log("ui", uiUrl);
+
+// HTTP UI probes
+const health = await fetch(new URL("/health", uiUrl));
+if (!health.ok) throw new Error("health check failed");
+bridge.setPlan(emptyPlanState({ mode: "planning", sessionId: "smoke", cwd: process.cwd() }));
+const stateRes = await fetch(new URL("/api/state", uiUrl));
+if (!stateRes.ok) throw new Error("/api/state failed");
+const stateJson = await stateRes.json();
+if (stateJson.mode !== "planning") throw new Error("/api/state returned unexpected mode");
+
+const indexRes = await fetch(uiUrl);
+if (!indexRes.ok || !(await indexRes.text()).includes("piview")) {
+  throw new Error("UI index.html not served");
+}
 
 const ws = new WebSocket(url);
 const events = [];

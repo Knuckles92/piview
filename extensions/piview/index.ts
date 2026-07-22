@@ -1,7 +1,7 @@
 /**
  * piview — plan-mode companion for pi
  *
- * /plangui  open long-lived Go plan viewer
+ * /plangui  open long-lived plan viewer (local HTTP UI)
  * /plan     toggle plan mode (TUI-only ok)
  * /todos    show plan progress
  */
@@ -10,8 +10,8 @@ import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import type { AssistantMessage, TextContent } from "@earendil-works/pi-ai";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
+import { openBrowser } from "./bridge/open.ts";
 import { createBridgeServer, type BridgeServer } from "./bridge/server.ts";
-import { openViewer, quitViewer } from "./bridge/spawn.ts";
 import type { PlanOp, PlanState } from "./protocol.ts";
 import {
 	UPDATE_PLAN_DESCRIPTION,
@@ -94,6 +94,7 @@ export default function piviewExtension(pi: ExtensionAPI): void {
 	function publish(ctx?: ExtensionContext): void {
 		const c = ctx ?? lastCtx;
 		if (c) updateTui(c, state);
+		// Broadcast fans out to WS clients and browser SSE subscribers.
 		bridge?.broadcast({ v: 1, type: "plan_state", state });
 		persist();
 	}
@@ -209,28 +210,18 @@ export default function piviewExtension(pi: ExtensionAPI): void {
 
 	async function openGui(ctx: ExtensionContext): Promise<void> {
 		const b = await ensureBridge(ctx);
-		// Push current state to any new client shortly after connect
+		b.setPlan(state);
+		// Push current state shortly after open so a reconnecting EventSource catches up.
 		setTimeout(() => b.broadcast({ v: 1, type: "plan_state", state }), 150);
 
-		const title = `piview — ${ctx.cwd.split("/").filter(Boolean).pop() ?? ctx.cwd}`;
-		const result = await openViewer({
-			wsUrl: b.getConnectUrl(),
-			title,
-			cwd: ctx.cwd,
-		});
-
-		if (!result.ok) {
-			ctx.ui.notify(
-				`Could not open piview (${result.error}). Install Go 1.22+ and run npm run build:viewer, or set PIVIEW_BIN to a piview binary. See README.md.`,
-				"error",
-			);
+		const title = `piview — ${ctx.cwd.split(/[/\\]/).filter(Boolean).pop() ?? ctx.cwd}`;
+		const uiUrl = b.getUiUrl();
+		const opened = await openBrowser(uiUrl, title);
+		if (!opened) {
+			ctx.ui.notify(`Could not open a browser. Open the plan GUI at ${uiUrl}`, "warning");
 			return;
 		}
-		if (result.uiUrl) {
-			ctx.ui.notify(`Plan GUI: ${result.uiUrl}`, "info");
-		} else {
-			ctx.ui.notify("Plan GUI opened (UI URL not ready yet — retry /plangui)", "warning");
-		}
+		ctx.ui.notify(`Plan GUI: ${uiUrl}`, "info");
 	}
 
 	async function startExecution(ctx: ExtensionContext, fromStepId?: string): Promise<void> {
@@ -372,7 +363,6 @@ export default function piviewExtension(pi: ExtensionAPI): void {
 			lastCtx = ctx;
 			const a = args.trim().toLowerCase();
 			if (a === "close" || a === "quit" || a === "stop") {
-				quitViewer();
 				if (bridge) {
 					await bridge.stop("user closed");
 					bridge = undefined;
@@ -470,7 +460,6 @@ export default function piviewExtension(pi: ExtensionAPI): void {
 	});
 
 	pi.on("session_shutdown", async () => {
-		quitViewer();
 		if (bridge) {
 			await bridge.stop("session_shutdown");
 			bridge = undefined;

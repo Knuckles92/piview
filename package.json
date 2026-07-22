@@ -20,21 +20,14 @@
     "LICENSE",
     "README.md",
     "CHANGELOG.md",
-    "bin/.gitkeep",
     "extensions/",
     "protocol/",
-    "scripts/",
-    "viewer/",
-    "!viewer/piview",
-    "!viewer/piview.exe"
+    "scripts/"
   ],
   "pi": {
     "extensions": ["./extensions/piview/index.ts"]
   },
   "scripts": {
-    "postinstall": "bash scripts/install-viewer.sh",
-    "build:viewer": "bash scripts/build-viewer.sh",
-    "install:viewer": "bash scripts/install-viewer.sh",
     "spike": "node scripts/spike-bridge.mjs",
     "check": "tsc --noEmit -p extensions/piview",
     "test": "node scripts/smoke-protocol.mjs"

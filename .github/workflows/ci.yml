@@ -18,23 +18,11 @@ jobs:
           node-version: "22"
           cache: npm
 
-      - name: Setup Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: "1.22.x"
-          cache-dependency-path: viewer/go.sum
-
       - name: Install JS dependencies
         run: npm ci
-        env:
-          # build explicitly in the next step for clearer logs
-          PIVIEW_SKIP_VIEWER_BUILD: "1"
 
       - name: Typecheck
         run: npm run check
-
-      - name: Build viewer
-        run: npm run build:viewer
 
       - name: Smoke test
         run: npm test

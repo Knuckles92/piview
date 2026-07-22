@@ -1,6 +1,8 @@
 # piview protocol v1
 
-Language-agnostic JSON protocol between the pi extension (server) and the Go companion (client).
+Language-agnostic JSON protocol between the pi extension (server) and WebSocket clients.
+
+The built-in plan GUI talks to the extension over HTTP + SSE (`/api/*`). The WebSocket endpoint remains the canonical protocol surface for external viewers and tests.
 
 ## Transport
 

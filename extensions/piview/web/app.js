@@ -1,4 +1,4 @@
-/* piview frontend — talks to local Go UI bridge via /api/* and event stream */
+/* piview frontend — talks to the extension UI bridge via /api/* and event stream */
 
 import { bindToolbar, insertImage } from "./editor.js";
 import { executionDashboardModel, formatDuration } from "./execution-dashboard.js";

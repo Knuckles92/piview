@@ -158,6 +158,10 @@ npm run spike          # fake bridge + open UI
 
 MVP: companion open/edit/execute path works. The plan UI is a local web app opened in an app-mode browser window (Chrome/Chromium when available).
 
+## Credits
+
+piview is built for [pi](https://pi.dev), the open-source coding agent by [earendil-works](https://github.com/earendil-works). Source: [github.com/earendil-works/pi](https://github.com/earendil-works/pi).
+
 ## License
 
 [MIT](./LICENSE)

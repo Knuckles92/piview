@@ -8,6 +8,20 @@ Use **pi’s TUI normally**. Run **`/plangui`** to open a long-lived plan viewer
 pi TUI  ←→  extension (WS bridge + plan mode)  ←→  piview (Go companion)
 ```
 
+## Screenshots
+
+Plan document with outline nav, checklist, and progress — mock “Checkout API hardening” session:
+
+![Plan view](docs/screenshots/plan.png)
+
+Steps editor with status filters, drag reorder, file chips, and step detail:
+
+![Steps view](docs/screenshots/steps.png)
+
+Live execution dashboard with metrics, file edits, and tool activity:
+
+![Execution dashboard](docs/screenshots/execution.png)
+
 ## Features
 
 - `/plangui` — enable plan mode + open/focus the Go companion

@@ -1,8 +1,13 @@
 node_modules/
 bin/piview
 bin/piview-*
+bin/piview.exe
 !bin/.gitkeep
 viewer/piview
+viewer/piview.exe
+.piview/
+.agents/
 *.log
 .DS_Store
+Thumbs.db
 dist/

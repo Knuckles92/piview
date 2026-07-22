@@ -18,7 +18,7 @@ if ! command -v go >/dev/null 2>&1; then
   warn "Go not found — plan GUI binary not built."
   warn "Install Go 1.22+, then run: npm run build:viewer"
   warn "Or set PIVIEW_BIN to an existing piview binary."
-  warn "See README.md / CONTRIBUTING.md."
+  warn "See README.md."
   exit 0
 fi
 

@@ -1,4 +1,4 @@
-module github.com/dtf/piview
+module github.com/Knuckles92/piview
 
 go 1.22
 

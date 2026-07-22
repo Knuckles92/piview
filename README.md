@@ -31,11 +31,11 @@ pi TUI  ←→  extension (WS bridge + plan mode)  ←→  piview (Go companion)
 From git (recommended):
 
 ```bash
-pi install git:github.com/dtf/piview
+pi install git:github.com/Knuckles92/piview
 # or:
-pi install https://github.com/dtf/piview
+pi install https://github.com/Knuckles92/piview
 # pin a release tag when available:
-# pi install git:github.com/dtf/piview@v0.1.0
+# pi install git:github.com/Knuckles92/piview@v0.1.0
 ```
 
 `pi install` runs `npm install` for the package. A **postinstall** script builds the Go companion when `go` is on your `PATH`. If Go is missing, install it and run:
@@ -63,7 +63,7 @@ Otherwise pi fails with `Flag "--plan" conflicts`.
 ## Quick start (from a clone)
 
 ```bash
-git clone https://github.com/dtf/piview.git
+git clone https://github.com/Knuckles92/piview.git
 cd piview
 npm install
 npm run build:viewer   # if postinstall skipped (no Go at install time)
@@ -134,7 +134,7 @@ scripts/             # build, install, smoke, spike
 - Random per-session token required on WS connect
 - Companion is a local process; treat it like the terminal
 
-Details and vulnerability reporting: [SECURITY.md](./SECURITY.md).
+Report security issues via [GitHub Advisories](https://github.com/Knuckles92/piview/security/advisories) on this repository.
 
 ## Troubleshooting
 
@@ -161,8 +161,6 @@ npm run check          # TypeScript typecheck
 npm test               # bridge protocol smoke test
 npm run build:viewer   # Go companion
 ```
-
-See [CONTRIBUTING.md](./CONTRIBUTING.md).
 
 ## Status
 

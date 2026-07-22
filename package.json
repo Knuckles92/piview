@@ -7,12 +7,12 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/dtf/piview.git"
+    "url": "git+https://github.com/Knuckles92/piview.git"
   },
   "bugs": {
-    "url": "https://github.com/dtf/piview/issues"
+    "url": "https://github.com/Knuckles92/piview/issues"
   },
-  "homepage": "https://github.com/dtf/piview#readme",
+  "homepage": "https://github.com/Knuckles92/piview#readme",
   "engines": {
     "node": ">=20"
   },
@@ -20,9 +20,6 @@
     "LICENSE",
     "README.md",
     "CHANGELOG.md",
-    "SECURITY.md",
-    "CONTRIBUTING.md",
-    "CODE_OF_CONDUCT.md",
     "bin/.gitkeep",
     "extensions/",
     "protocol/",

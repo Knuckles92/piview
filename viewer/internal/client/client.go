@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/dtf/piview/internal/protocol"
+	"github.com/Knuckles92/piview/internal/protocol"
 
 	"github.com/gorilla/websocket"
 )

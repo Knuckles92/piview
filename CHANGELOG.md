@@ -13,7 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Localhost WebSocket bridge with per-session token auth
 - Go companion (`piview`) serving embedded plan UI (open / focus / quit)
 - Protocol v1 schema and docs under `protocol/`
-- Open-source packaging: MIT license, CONTRIBUTING, SECURITY, CODE_OF_CONDUCT
+- Open-source packaging: MIT license
 - `postinstall` viewer build when Go is available (`scripts/install-viewer.sh`)
 - TypeScript project config and `npm run check`
 - Protocol smoke test (`npm test`) and GitHub Actions CI

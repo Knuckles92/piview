@@ -10,11 +10,11 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/dtf/piview/internal/client"
-	"github.com/dtf/piview/internal/instance"
-	"github.com/dtf/piview/internal/open"
-	"github.com/dtf/piview/internal/protocol"
-	"github.com/dtf/piview/internal/ui"
+	"github.com/Knuckles92/piview/internal/client"
+	"github.com/Knuckles92/piview/internal/instance"
+	"github.com/Knuckles92/piview/internal/open"
+	"github.com/Knuckles92/piview/internal/protocol"
+	"github.com/Knuckles92/piview/internal/ui"
 )
 
 //go:embed web/*

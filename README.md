@@ -1,8 +1,10 @@
 # piview
 
-Plan-mode GUI companion for [pi](https://pi.dev).
+A plan board for [pi](https://pi.dev) — so you can see the work, not just scroll through it.
 
-Use **pi’s TUI normally**. Run **`/plangui`** to open a long-lived plan viewer window with formatting and editing tools. The same session stays in the terminal.
+When a coding agent is planning a multi-step change, the terminal is great for the conversation and a poor place to *hold* the plan. piview keeps pi’s TUI as home base, and gives the plan its own window: readable document, editable steps, live progress.
+
+Type **`/plangui`**. A local browser window opens beside your session. The agent writes structured plans; you can reorder steps, tweak wording, kick off execute/refine, and watch files and tools move as work lands. Close the window whenever — the session never left the terminal.
 
 ```
 pi TUI  ←→  extension (HTTP UI + WS bridge + plan mode)  ←→  browser (app mode)
@@ -22,7 +24,15 @@ Live execution dashboard with metrics, file edits, and tool activity:
 
 ![Execution dashboard](docs/screenshots/execution.png)
 
-## Features
+## What you get
+
+- A real plan surface — outline, checklist, and progress in one place, not a wall of markdown in the scrollback
+- Steps you can actually work with — filter, reorder, edit detail, bulk-update status, then apply back into pi
+- Execution you can follow — which step is running, what got edited, what tools fired
+- The same session, two views — TUI stays primary; the GUI is optional and local-only
+- Agent-native planning — `update_plan` tool + structured state, with `/plan` and `/todos` when you want the terminal only
+
+### Commands & pieces
 
 - `/plangui` — enable plan mode + open/focus the plan GUI
 - `/plan` — toggle plan mode without the GUI

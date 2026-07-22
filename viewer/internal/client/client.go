@@ -123,8 +123,8 @@ func (c *Client) SendReplace(state protocol.PlanState) error {
 	return c.Send(protocol.PlanReplaceMsg{V: 1, Type: "plan_replace", State: state})
 }
 
-func (c *Client) Execute() error {
-	return c.Send(protocol.ExecuteMsg{V: 1, Type: "execute"})
+func (c *Client) Execute(fromStepID string) error {
+	return c.Send(protocol.ExecuteMsg{V: 1, Type: "execute", FromStepID: fromStepID})
 }
 
 func (c *Client) Refine(text string) error {

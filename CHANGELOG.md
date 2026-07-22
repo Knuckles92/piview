@@ -17,3 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `postinstall` viewer build when Go is available (`scripts/install-viewer.sh`)
 - TypeScript project config and `npm run check`
 - Protocol smoke test (`npm test`) and GitHub Actions CI
+- Plan view: outline nav, find-in-document, export/copy, clickable task checkboxes
+- Steps view: drag reorder, multi-select bulk actions, status filters/search, progress ring, file chips, execute-from-here (`execute.fromStepId`)
+- Execution dashboard step drill-down and path copy
+- Dirty conflict prompt (Keep local / Take server), shortcuts help, toasts, remembered tab

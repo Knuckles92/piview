@@ -28,6 +28,14 @@
       <button id="btn-add" class="btn hidden">+ Step</button>
       <button id="btn-edit-plan" class="btn" type="button" title="Edit plan document (E)">Edit</button>
       <button id="btn-done-edit" class="btn primary hidden" type="button" title="Finish editing">Done</button>
+      <div id="export-menu" class="menu hidden">
+        <button type="button" id="btn-export" class="btn" title="Export or copy plan" aria-haspopup="menu" aria-expanded="false">Export ▾</button>
+        <div id="export-menu-panel" class="menu-panel hidden" role="menu" aria-label="Export plan">
+          <button type="button" class="menu-item" role="menuitem" data-export="copy-md">Copy markdown</button>
+          <button type="button" class="menu-item" role="menuitem" data-export="download-md">Download .md</button>
+          <button type="button" class="menu-item" role="menuitem" data-export="copy-checklist">Copy checklist</button>
+        </div>
+      </div>
       <button id="btn-execute" class="btn primary">Execute</button>
       <button id="btn-refine" class="btn">Refine…</button>
       <button id="btn-apply" class="btn ghost" disabled>Apply edits</button>
@@ -64,6 +72,14 @@
         <span class="plan-editor-hint">⌘/Ctrl+S apply · drop or paste images</span>
       </div>
 
+      <div id="plan-find" class="plan-find hidden" role="search" aria-label="Find in plan">
+        <input id="plan-find-input" class="plan-find-input" type="search" placeholder="Find in plan…" autocomplete="off" spellcheck="false" />
+        <span id="plan-find-count" class="plan-find-count">0/0</span>
+        <button type="button" id="plan-find-prev" class="btn ghost plan-find-btn" title="Previous match (Shift+Enter)">↑</button>
+        <button type="button" id="plan-find-next" class="btn ghost plan-find-btn" title="Next match (Enter)">↓</button>
+        <button type="button" id="plan-find-close" class="btn ghost plan-find-btn" title="Close (Esc)">✕</button>
+      </div>
+
       <div id="plan-editor-body" class="plan-editor-body">
         <div id="plan-drop-overlay" class="plan-drop-overlay hidden" aria-hidden="true">
           <div class="plan-drop-card">Drop image to attach</div>
@@ -75,9 +91,17 @@
           aria-label="Plan markdown"
           placeholder="# Plan title&#10;&#10;Context and approach…&#10;&#10;1. [ ] **First step**&#10;   Details for the executor"
         ></textarea>
-        <article id="plan-md" class="plan-md markdown-body">
-          <p class="empty">No plan yet. Ask pi for a plan in plan mode.</p>
-        </article>
+        <div id="plan-preview-pane" class="plan-preview-pane">
+          <nav id="plan-outline" class="plan-outline hidden" aria-label="Plan outline">
+            <div class="plan-outline-head">On this page</div>
+            <ul id="plan-outline-list" class="plan-outline-list"></ul>
+          </nav>
+          <div id="plan-md-scroll" class="plan-md-scroll">
+            <article id="plan-md" class="plan-md markdown-body">
+              <p class="empty">No plan yet. Ask pi for a plan in plan mode.</p>
+            </article>
+          </div>
+        </div>
       </div>
       <input id="plan-image-input" type="file" accept="image/png,image/jpeg,image/gif,image/webp" hidden />
     </main>
@@ -86,10 +110,32 @@
       <div id="steps-editor" class="layout">
         <aside class="steps-pane">
           <div id="title-row" class="title-row">
+            <div id="steps-progress" class="steps-progress" role="progressbar" aria-label="Plan completion" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+              <strong id="steps-progress-pct">0%</strong>
+            </div>
             <input id="plan-title" class="plan-title" placeholder="Plan title" />
           </div>
-          <ul id="steps" class="steps"></ul>
+          <div id="steps-tools" class="steps-tools">
+            <input id="steps-search" class="steps-search" type="search" placeholder="Filter steps…" autocomplete="off" spellcheck="false" />
+            <div id="steps-filters" class="steps-filters" role="group" aria-label="Filter by status">
+              <button type="button" class="filter-chip active" data-status-filter="all">All</button>
+              <button type="button" class="filter-chip" data-status-filter="pending">Pending</button>
+              <button type="button" class="filter-chip" data-status-filter="active">Active</button>
+              <button type="button" class="filter-chip" data-status-filter="done">Done</button>
+              <button type="button" class="filter-chip" data-status-filter="skipped">Skipped</button>
+              <button type="button" class="filter-chip" data-status-filter="failed">Failed</button>
+            </div>
+          </div>
+          <div id="steps-bulk" class="steps-bulk hidden" aria-label="Bulk step actions">
+            <span id="steps-bulk-count" class="steps-bulk-count">0 selected</span>
+            <button type="button" id="bulk-done" class="btn" title="Mark done">Done</button>
+            <button type="button" id="bulk-skip" class="btn ghost" title="Skip">Skip</button>
+            <button type="button" id="bulk-reset" class="btn ghost" title="Reset to pending">Reset</button>
+            <button type="button" id="bulk-remove" class="btn danger" title="Remove selected">Remove</button>
+          </div>
+          <ul id="steps" class="steps" tabindex="0" aria-label="Plan steps"></ul>
           <p id="empty" class="empty">No steps yet. Ask pi for a plan in plan mode, or add steps here.</p>
+          <p id="steps-filter-empty" class="empty hidden">No steps match this filter.</p>
         </aside>
         <section class="detail-pane">
           <div id="detail-empty" class="empty">Select a step</div>
@@ -98,6 +144,9 @@
             <input id="detail-title" />
             <label>Detail</label>
             <textarea id="detail-body" rows="10" placeholder="Optional detail / notes for this step"></textarea>
+            <label>Files</label>
+            <div id="detail-files" class="file-chips" aria-label="Step files"></div>
+            <input id="detail-files-input" class="file-chips-input" type="text" placeholder="Add file path and press Enter" autocomplete="off" spellcheck="false" />
             <label>Status</label>
             <select id="detail-status">
               <option value="pending">pending</option>
@@ -107,6 +156,7 @@
               <option value="failed">failed</option>
             </select>
             <div class="detail-actions">
+              <button id="btn-execute-from" class="btn primary" type="button" title="Start execution at this step">Execute from here</button>
               <button id="btn-done" class="btn">Mark done</button>
               <button id="btn-skip" class="btn ghost">Skip</button>
               <button id="btn-remove" class="btn danger">Remove</button>
@@ -176,6 +226,39 @@
       </div>
     </form>
   </dialog>
+
+  <dialog id="conflict-dialog">
+    <form method="dialog" class="dialog-form">
+      <h3>Plan changed on server</h3>
+      <p class="dialog-copy">The plan was updated while you have local edits. Keep your local version, or take the server plan?</p>
+      <div class="dialog-actions">
+        <button id="conflict-keep" value="keep" class="btn ghost">Keep local</button>
+        <button id="conflict-take" value="take" class="btn primary">Take server</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="shortcuts-dialog">
+    <form method="dialog" class="dialog-form shortcuts-form">
+      <h3>Keyboard shortcuts</h3>
+      <dl class="shortcuts-list">
+        <div><dt><kbd>?</kbd> or <kbd>Ctrl</kbd>+<kbd>/</kbd></dt><dd>This help</dd></div>
+        <div><dt><kbd>E</kbd></dt><dd>Edit plan document</dd></div>
+        <div><dt><kbd>Ctrl</kbd>+<kbd>F</kbd></dt><dd>Find in plan</dd></div>
+        <div><dt><kbd>Ctrl</kbd>+<kbd>S</kbd></dt><dd>Apply edits</dd></div>
+        <div><dt><kbd>Esc</kbd></dt><dd>Close find / leave edit / dismiss menus</dd></div>
+        <div><dt><kbd>J</kbd> / <kbd>K</kbd></dt><dd>Next / previous step (Steps)</dd></div>
+        <div><dt><kbd>D</kbd> / <kbd>S</kbd> / <kbd>R</kbd></dt><dd>Done / skip / reset step</dd></div>
+        <div><dt><kbd>Ctrl</kbd>+click</dt><dd>Multi-select steps</dd></div>
+        <div><dt>Drag handle</dt><dd>Reorder steps</dd></div>
+      </dl>
+      <div class="dialog-actions">
+        <button value="ok" class="btn primary">Close</button>
+      </div>
+    </form>
+  </dialog>
+
+  <div id="toast-host" class="toast-host" aria-live="polite" aria-relevant="additions"></div>
 
   <script type="module" src="/app.js"></script>
 </body>

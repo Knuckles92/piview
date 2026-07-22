@@ -8,6 +8,90 @@ function escapeHtml(s) {
     .replace(/"/g, "&quot;");
 }
 
+/** Strip light markdown decor so heading anchors stay readable. */
+export function plainHeadingText(text) {
+  return String(text || "")
+    .replace(/!\[([^\]]*)\]\([^)]+\)/g, "$1")
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
+    .replace(/`([^`]+)`/g, "$1")
+    .replace(/\*\*([^*]+)\*\*/g, "$1")
+    .replace(/__([^_]+)__/g, "$1")
+    .replace(/\*([^*]+)\*/g, "$1")
+    .replace(/_([^_]+)_/g, "$1")
+    .replace(/~~([^~]+)~~/g, "$1")
+    .replace(/[*_`~]+/g, "")
+    .trim();
+}
+
+/** URL/fragment-safe slug from heading text. */
+export function slugifyHeading(text) {
+  const base = plainHeadingText(text)
+    .toLowerCase()
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return base || "section";
+}
+
+function uniqueSlug(base, used) {
+  let slug = base || "section";
+  let n = 2;
+  while (used.has(slug)) {
+    slug = `${base}-${n++}`;
+  }
+  used.add(slug);
+  return slug;
+}
+
+/**
+ * Parse H1–H3 outline entries from markdown (skips fenced code).
+ * IDs match those assigned by {@link renderMarkdown}.
+ *
+ * @param {string} src
+ * @returns {{ id: string, level: number, text: string }[]}
+ */
+export function parseOutline(src) {
+  if (!src || !String(src).trim()) return [];
+
+  const lines = String(src).replace(/\r\n/g, "\n").split("\n");
+  const used = new Set();
+  const items = [];
+  let inCode = false;
+
+  for (const line of lines) {
+    if (/^```/.test(line)) {
+      inCode = !inCode;
+      continue;
+    }
+    if (inCode) continue;
+
+    const heading = line.match(/^(#{1,3})\s+(.+)$/);
+    if (heading) {
+      const level = heading[1].length;
+      const text = plainHeadingText(heading[2]);
+      if (!text) continue;
+      items.push({
+        id: uniqueSlug(slugifyHeading(text), used),
+        level,
+        text,
+      });
+      continue;
+    }
+
+    // Match renderMarkdown's special "Plan:" line → h2
+    if (/^\*{0,2}Plan:\*{0,2}\s*$/i.test(line.trim())) {
+      items.push({
+        id: uniqueSlug("plan", used),
+        level: 2,
+        text: "Plan",
+      });
+    }
+  }
+
+  return items;
+}
+
 /** Resolve markdown image src to a browser-safe URL, or null if disallowed. */
 export function safeImageSrc(raw) {
   const src = String(raw || "").trim();
@@ -63,12 +147,20 @@ export function renderMarkdown(src) {
 
   const lines = String(src).replace(/\r\n/g, "\n").split("\n");
   const out = [];
+  const usedHeadingIds = new Set();
   let i = 0;
   let inCode = false;
   let codeLang = "";
   let codeBuf = [];
   let listType = null; // "ul" | "ol" | "task"
   let para = [];
+
+  const headingTag = (level, rawText) => {
+    const text = String(rawText || "").trim();
+    const plain = plainHeadingText(text);
+    const id = uniqueSlug(slugifyHeading(plain || text), usedHeadingIds);
+    return `<h${level} id="${escapeHtml(id)}">${inlineMarkdown(text)}</h${level}>`;
+  };
 
   const flushPara = () => {
     if (!para.length) return;
@@ -130,7 +222,7 @@ export function renderMarkdown(src) {
       flushPara();
       closeList();
       const level = heading[1].length;
-      out.push(`<h${level}>${inlineMarkdown(heading[2].trim())}</h${level}>`);
+      out.push(headingTag(level, heading[2]));
       i++;
       continue;
     }
@@ -139,7 +231,7 @@ export function renderMarkdown(src) {
     if (/^\*{0,2}Plan:\*{0,2}\s*$/i.test(line.trim())) {
       flushPara();
       closeList();
-      out.push("<h2>Plan</h2>");
+      out.push(headingTag(2, "Plan"));
       i++;
       continue;
     }
@@ -161,11 +253,13 @@ export function renderMarkdown(src) {
       continue;
     }
 
-    const task = line.match(/^\s*(?:[-*]|\d+[.)])\s+\[([ xX~!])\]\s+(.+)$/);
+    // Checkbox tasks: unordered (- [ ]) or numbered plan steps (1. [ ])
+    const task = line.match(/^\s*(?:[-*+]|(\d+)[.)])\s+\[([ xX~!])\]\s+(.+)$/);
     if (task) {
       flushPara();
       openList("task");
-      const mark = task[1].toLowerCase();
+      const stepNum = task[1] || "";
+      const mark = task[2].toLowerCase();
       const checked = mark === "x" ? " checked" : "";
       const cls =
         mark === "x" ? "done" : mark === "~" ? "skipped" : mark === "!" ? "failed" : "pending";
@@ -174,8 +268,11 @@ export function renderMarkdown(src) {
         i++;
         cont.push(`<div class="list-cont">${inlineMarkdown(lines[i].trim())}</div>`);
       }
+      const stepAttr = stepNum ? ` data-plan-step="${escapeHtml(stepNum)}"` : "";
+      // Numbered plan steps are interactive in the GUI; plain task lists stay display-only.
+      const disabledAttr = stepNum ? "" : " disabled";
       out.push(
-        `<li class="task ${cls}"><input type="checkbox" disabled${checked} /> <div class="task-body"><span>${inlineMarkdown(task[2])}</span>${cont.join("")}</div></li>`,
+        `<li class="task ${cls}"${stepAttr}><input type="checkbox"${disabledAttr}${checked} /> <div class="task-body"><span>${inlineMarkdown(task[3])}</span>${cont.join("")}</div></li>`,
       );
       i++;
       continue;

@@ -115,8 +115,9 @@ type PlanReplaceMsg struct {
 }
 
 type ExecuteMsg struct {
-	V    int    `json:"v"`
-	Type string `json:"type"`
+	V          int    `json:"v"`
+	Type       string `json:"type"`
+	FromStepID string `json:"fromStepId,omitempty"`
 }
 
 type RefineMsg struct {

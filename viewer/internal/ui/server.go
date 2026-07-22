@@ -15,7 +15,7 @@ import (
 
 type Bridge interface {
 	SendReplace(state protocol.PlanState) error
-	Execute() error
+	Execute(fromStepID string) error
 	Refine(text string) error
 	SetMode(mode string) error
 }
@@ -210,7 +210,12 @@ func (s *Server) handleReplace(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleExecute(w http.ResponseWriter, r *http.Request) {
-	if err := s.bridge.Execute(); err != nil {
+	var body struct {
+		FromStepID string `json:"fromStepId"`
+	}
+	// Empty body is fine (toolbar Execute with no start step).
+	_ = json.NewDecoder(r.Body).Decode(&body)
+	if err := s.bridge.Execute(body.FromStepID); err != nil {
 		http.Error(w, err.Error(), 502)
 		return
 	}

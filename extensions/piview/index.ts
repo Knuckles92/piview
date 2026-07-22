@@ -12,7 +12,7 @@ import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-a
 import { Type } from "typebox";
 import { createBridgeServer, type BridgeServer } from "./bridge/server.ts";
 import { openViewer, quitViewer } from "./bridge/spawn.ts";
-import type { PlanState } from "./protocol.ts";
+import type { PlanOp, PlanState } from "./protocol.ts";
 import {
 	UPDATE_PLAN_DESCRIPTION,
 	UPDATE_PLAN_GUIDELINES,
@@ -180,7 +180,7 @@ export default function piviewExtension(pi: ExtensionAPI): void {
 					break;
 				}
 				case "execute": {
-					void startExecution(c);
+					void startExecution(c, msg.fromStepId);
 					break;
 				}
 				case "refine": {
@@ -233,17 +233,39 @@ export default function piviewExtension(pi: ExtensionAPI): void {
 		}
 	}
 
-	async function startExecution(ctx: ExtensionContext): Promise<void> {
+	async function startExecution(ctx: ExtensionContext, fromStepId?: string): Promise<void> {
 		if (state.steps.length === 0) {
 			ctx.ui.notify("No plan steps to execute", "warning");
 			return;
 		}
 
 		state = beginExecutionTelemetry(setMode(state, "executing"));
-		// Mark first pending as active
-		const first = state.steps.find((s) => s.status === "pending");
-		if (first) {
-			state = applyOps(state, [{ op: "set_status", id: first.id, status: "active" }]);
+
+		const fromIdx = fromStepId ? state.steps.findIndex((s) => s.id === fromStepId) : -1;
+		if (fromIdx >= 0) {
+			// Start at the requested step: skip earlier unfinished work, activate target.
+			const ops: PlanOp[] = [];
+			for (let i = 0; i < state.steps.length; i++) {
+				const step = state.steps[i];
+				if (i < fromIdx) {
+					if (step.status === "pending" || step.status === "active") {
+						ops.push({ op: "set_status", id: step.id, status: "skipped" });
+					}
+				} else if (i === fromIdx) {
+					ops.push({ op: "set_status", id: step.id, status: "active" });
+				} else if (step.status === "active") {
+					ops.push({ op: "set_status", id: step.id, status: "pending" });
+				}
+			}
+			if (ops.length) state = applyOps(state, ops);
+			state = { ...state, activeStepId: fromStepId };
+		} else {
+			// Mark first pending as active
+			const first = state.steps.find((s) => s.status === "pending");
+			if (first) {
+				state = applyOps(state, [{ op: "set_status", id: first.id, status: "active" }]);
+				state = { ...state, activeStepId: first.id };
+			}
 		}
 		restoreNormalModeTools();
 		// Ensure write tools on for execution; keep update_plan so the model can revise the plan mid-run

@@ -21,13 +21,14 @@ The extension owns canonical `PlanState`. The GUI may edit locally and commit vi
 
 During execution, the optional `PlanState.execution` object carries a bounded activity and successful-file-edit history so reconnecting viewers can render live metrics. Progress remains `(done + skipped) / total`; failed steps are reported separately and do not count as complete.
 
+`execute` may include optional `fromStepId` so the GUI can start a run at a selected step. Earlier unfinished steps are marked `skipped`; the target becomes `active`.
+
 Dirty policy (v1):
 
 - GUI applies local edits immediately in the UI
 - GUI sends `plan_ops` (debounced) or `plan_replace`
 - Server applies, persists, broadcasts fresh `plan_state`
-- If a server `plan_state` arrives while GUI is dirty, GUI prompts: Keep local / Take server  
-  (v1 implementation may auto-take server on non-edit snapshots from agent extract)
+- If a server `plan_state` arrives while GUI is dirty, GUI prompts: Keep local / Take server
 
 ## Message envelope
 

@@ -223,12 +223,12 @@ func (b bridgeAdapter) SendReplace(state protocol.PlanState) error {
 	return c.SendReplace(state)
 }
 
-func (b bridgeAdapter) Execute() error {
+func (b bridgeAdapter) Execute(fromStepID string) error {
 	c := b.get()
 	if c == nil {
 		return fmt.Errorf("not connected")
 	}
-	return c.Execute()
+	return c.Execute(fromStepID)
 }
 
 func (b bridgeAdapter) Refine(text string) error {

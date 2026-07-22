@@ -82,7 +82,7 @@ export type ClientMessage =
 	| { v: 1; type: "hello_ack"; protocolVersion: number; client: string }
 	| { v: 1; type: "plan_ops"; ops: PlanOp[] }
 	| { v: 1; type: "plan_replace"; state: PlanState }
-	| { v: 1; type: "execute" }
+	| { v: 1; type: "execute"; fromStepId?: string }
 	| { v: 1; type: "refine"; text: string }
 	| { v: 1; type: "set_mode"; mode: "off" | "planning" }
 	| { v: 1; type: "ping" };

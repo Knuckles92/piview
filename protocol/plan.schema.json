@@ -174,7 +174,11 @@
       "required": ["v", "type"],
       "properties": {
         "v": { "const": 1 },
-        "type": { "const": "execute" }
+        "type": { "const": "execute" },
+        "fromStepId": {
+          "type": "string",
+          "description": "Optional step id to start execution from. Earlier pending/active steps are skipped."
+        }
       }
     },
     "refine": {

@@ -12,7 +12,7 @@ import {
   recordExecutionToolStart,
 } from "../extensions/piview/state.ts";
 import { executionDashboardModel, formatDuration } from "../viewer/web/execution-dashboard.js";
-import { ensurePlanMarkdown } from "../viewer/web/markdown.js";
+import { ensurePlanMarkdown, parseOutline, renderMarkdown } from "../viewer/web/markdown.js";
 import WebSocket from "ws";
 
 const bridge = createBridgeServer({ sessionId: "smoke", cwd: process.cwd() });
@@ -25,6 +25,24 @@ if (ensurePlanMarkdown(editedPlan) !== authoredMarkdown) {
 }
 if (!ensurePlanMarkdown({ title: "Step-only plan", steps: editedPlan.steps }).startsWith("# Step-only plan")) {
   throw new Error("step-only plans must receive synthesized markdown");
+}
+
+const outlineMd = "# Title\n\n## Section\n\n```\n# ignored\n```\n\n### Detail\n\n## Dup\n\n## Dup\n";
+const outline = parseOutline(outlineMd);
+if (
+  outline.length !== 5 ||
+  outline[0].id !== "title" ||
+  outline[1].id !== "section" ||
+  outline[2].level !== 3 ||
+  outline[4].id !== "dup-2"
+) {
+  throw new Error("parseOutline must collect unique H1–H3 ids and skip code fences");
+}
+const outlineHtml = renderMarkdown(outlineMd);
+for (const item of outline) {
+  if (!outlineHtml.includes(`id="${item.id}"`)) {
+    throw new Error(`renderMarkdown must emit outline id ${item.id}`);
+  }
 }
 
 let telemetryState = beginExecutionTelemetry(

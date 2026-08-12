@@ -16,6 +16,41 @@ import {
   syncStepsFromMarkdown,
 } from "./markdown.js";
 
+const PLAN_DISPLAY_STORAGE_KEY = "piview.planDisplay";
+const PLAN_DISPLAY_DEFAULTS = Object.freeze({ fontSize: 15, textWidth: 720 });
+const PLAN_DISPLAY_LIMITS = Object.freeze({
+  fontSize: { min: 12, max: 24 },
+  textWidth: { min: 480, max: 1440 },
+});
+
+function clampPlanDisplayValue(value, limits, fallback) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return fallback;
+  return Math.min(limits.max, Math.max(limits.min, number));
+}
+
+function restorePlanDisplaySettings() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(PLAN_DISPLAY_STORAGE_KEY) || "null");
+    return {
+      fontSize: clampPlanDisplayValue(
+        saved?.fontSize,
+        PLAN_DISPLAY_LIMITS.fontSize,
+        PLAN_DISPLAY_DEFAULTS.fontSize,
+      ),
+      textWidth: clampPlanDisplayValue(
+        saved?.textWidth,
+        PLAN_DISPLAY_LIMITS.textWidth,
+        PLAN_DISPLAY_DEFAULTS.textWidth,
+      ),
+    };
+  } catch {
+    return { ...PLAN_DISPLAY_DEFAULTS };
+  }
+}
+
+const initialPlanDisplay = restorePlanDisplaySettings();
+
 const state = {
   plan: { v: 1, mode: "off", steps: [], updatedAt: 0 },
   selectedId: null,
@@ -27,6 +62,8 @@ const state = {
   tab: "plan",
   /** @type {"preview"|"edit"|"split"} */
   planView: "preview",
+  planFontSize: initialPlanDisplay.fontSize,
+  planTextWidth: initialPlanDisplay.textWidth,
   /** Draft markdown while editing the plan document (may differ from plan.markdown). */
   editingDraft: null,
   editing: false,
@@ -70,6 +107,78 @@ function setDirty(v) {
   state.dirty = v;
   $("dirty").classList.toggle("hidden", !v);
   $("btn-apply").disabled = !v;
+}
+
+function persistPlanDisplaySettings() {
+  try {
+    localStorage.setItem(
+      PLAN_DISPLAY_STORAGE_KEY,
+      JSON.stringify({ fontSize: state.planFontSize, textWidth: state.planTextWidth }),
+    );
+  } catch {
+    /* ignore */
+  }
+}
+
+function applyPlanDisplaySettings({ persist = false } = {}) {
+  const view = $("view-plan");
+  view?.style.setProperty("--plan-font-size", `${state.planFontSize}px`);
+  view?.style.setProperty("--plan-text-width", `${state.planTextWidth}px`);
+
+  const fontInput = $("plan-font-size");
+  const widthInput = $("plan-text-width");
+  const fontLabel = `${state.planFontSize}px`;
+  const widthLabel = `${state.planTextWidth}px`;
+  if (fontInput) {
+    fontInput.value = String(state.planFontSize);
+    fontInput.setAttribute("aria-valuetext", fontLabel);
+  }
+  if (widthInput) {
+    widthInput.value = String(state.planTextWidth);
+    widthInput.setAttribute("aria-valuetext", widthLabel);
+  }
+  if ($("plan-font-size-value")) $("plan-font-size-value").textContent = fontLabel;
+  if ($("plan-text-width-value")) $("plan-text-width-value").textContent = widthLabel;
+  if (persist) persistPlanDisplaySettings();
+  requestAnimationFrame(() => updateOutlineScrollSpy());
+}
+
+function setPlanFontSize(value) {
+  state.planFontSize = clampPlanDisplayValue(
+    value,
+    PLAN_DISPLAY_LIMITS.fontSize,
+    PLAN_DISPLAY_DEFAULTS.fontSize,
+  );
+  applyPlanDisplaySettings({ persist: true });
+}
+
+function setPlanTextWidth(value) {
+  state.planTextWidth = clampPlanDisplayValue(
+    value,
+    PLAN_DISPLAY_LIMITS.textWidth,
+    PLAN_DISPLAY_DEFAULTS.textWidth,
+  );
+  applyPlanDisplaySettings({ persist: true });
+}
+
+function resetPlanDisplaySettings() {
+  state.planFontSize = PLAN_DISPLAY_DEFAULTS.fontSize;
+  state.planTextWidth = PLAN_DISPLAY_DEFAULTS.textWidth;
+  applyPlanDisplaySettings({ persist: true });
+}
+
+function closePlanDisplayMenu() {
+  $("plan-display-panel")?.classList.add("hidden");
+  $("btn-plan-display")?.setAttribute("aria-expanded", "false");
+}
+
+function togglePlanDisplayMenu() {
+  const panel = $("plan-display-panel");
+  if (!panel) return;
+  const open = panel.classList.contains("hidden");
+  closeExportMenu();
+  panel.classList.toggle("hidden", !open);
+  $("btn-plan-display")?.setAttribute("aria-expanded", open ? "true" : "false");
 }
 
 const TAB_STORAGE_KEY = "piview.tab";
@@ -815,6 +924,7 @@ function toggleExportMenu() {
   const panel = $("export-menu-panel");
   if (!panel) return;
   const open = panel.classList.contains("hidden");
+  closePlanDisplayMenu();
   if (open) {
     panel.classList.remove("hidden");
     $("btn-export")?.setAttribute("aria-expanded", "true");
@@ -974,12 +1084,14 @@ function updatePlanChrome() {
   $("btn-edit-plan")?.classList.toggle("hidden", !isPlan || editing || locked || viewingResponse);
   $("btn-done-edit")?.classList.toggle("hidden", !editing);
   $("btn-add")?.classList.toggle("hidden", isPlan || locked);
+  $("plan-display-menu")?.classList.toggle("hidden", !isPlan);
   $("export-menu")?.classList.toggle("hidden", !isPlan || viewingResponse);
   $("btn-execute")?.classList.toggle("hidden", locked);
   $("btn-apply")?.classList.toggle("hidden", locked || viewingResponse);
   $("plan-editor-bar")?.classList.toggle("hidden", !editing);
   $("plan-title")?.classList.toggle("hidden", viewingResponse);
   if (!isPlan || viewingResponse) closeExportMenu();
+  if (!isPlan) closePlanDisplayMenu();
 
   const view = state.editing && !viewingResponse ? state.planView : "preview";
   $("view-plan")?.setAttribute("data-plan-mode", view);
@@ -991,6 +1103,7 @@ function updatePlanChrome() {
 
   const showEditor = editing && (view === "edit" || view === "split");
   const showPreview = !editing || view === "preview" || view === "split" || viewingResponse;
+  $("plan-editor-pane")?.classList.toggle("hidden", !showEditor);
   $("plan-editor")?.classList.toggle("hidden", !showEditor);
   $("plan-preview-pane")?.classList.toggle("hidden", !showPreview);
   $("plan-md")?.classList.toggle("hidden", !showPreview);
@@ -1808,6 +1921,18 @@ function wire() {
   $("plan-find-prev")?.addEventListener("click", () => findNext(-1));
   $("plan-find-close")?.addEventListener("click", () => closeFind());
 
+  $("btn-plan-display")?.addEventListener("click", (ev) => {
+    ev.stopPropagation();
+    togglePlanDisplayMenu();
+  });
+  $("plan-font-size")?.addEventListener("input", (ev) => {
+    setPlanFontSize(ev.currentTarget.value);
+  });
+  $("plan-text-width")?.addEventListener("input", (ev) => {
+    setPlanTextWidth(ev.currentTarget.value);
+  });
+  $("btn-plan-display-reset")?.addEventListener("click", () => resetPlanDisplaySettings());
+
   $("btn-export")?.addEventListener("click", (ev) => {
     ev.stopPropagation();
     toggleExportMenu();
@@ -1818,10 +1943,16 @@ function wire() {
     void runExportAction(btn.getAttribute("data-export"));
   });
   document.addEventListener("click", (ev) => {
-    const menu = $("export-menu");
-    if (!menu || menu.classList.contains("hidden")) return;
-    if (ev.target instanceof Node && menu.contains(ev.target)) return;
+    const exportMenu = $("export-menu");
+    const displayMenu = $("plan-display-menu");
+    if (
+      ev.target instanceof Node &&
+      (exportMenu?.contains(ev.target) || displayMenu?.contains(ev.target))
+    ) {
+      return;
+    }
     closeExportMenu();
+    closePlanDisplayMenu();
   });
 
   $("btn-add").onclick = () => {
@@ -1960,9 +2091,14 @@ function wire() {
       openShortcutsHelp();
       return;
     }
-    if (ev.key === "Escape" && !$("export-menu-panel")?.classList.contains("hidden")) {
+    if (
+      ev.key === "Escape" &&
+      (!$("export-menu-panel")?.classList.contains("hidden") ||
+        !$("plan-display-panel")?.classList.contains("hidden"))
+    ) {
       ev.preventDefault();
       closeExportMenu();
+      closePlanDisplayMenu();
       return;
     }
     if (ev.key === "Escape" && state.findOpen) {
@@ -2251,6 +2387,7 @@ function connectEvents() {
 }
 
 wire();
+applyPlanDisplaySettings();
 setTab(restoreTab());
 {
   const savedResponseId = restoreActiveResponseId();

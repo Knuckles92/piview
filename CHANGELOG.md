@@ -16,7 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Open-source packaging: MIT license
 - TypeScript project config and `npm run check`
 - Protocol/UI smoke test (`npm test`) and GitHub Actions CI
-- Plan view: outline nav, find-in-document, export/copy, clickable task checkboxes
+- Plan view: outline nav, find-in-document, export/copy, clickable task checkboxes, and persistent font-size/text-width controls
 - Steps view: drag reorder, multi-select bulk actions, status filters/search, progress ring, file chips, execute-from-here (`execute.fromStepId`)
 - Execution dashboard step drill-down and path copy
 - Execution file diff viewer: capture agent edit/write before/after, unified or side-by-side layout, open one file or all changes

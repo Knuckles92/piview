@@ -130,6 +130,58 @@ html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
   outline: none;
 }
 
+/* Plan reading and editing preferences */
+.plan-display-panel {
+  width: 260px;
+  padding: 12px;
+  gap: 14px;
+}
+.plan-display-setting {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+.plan-display-setting-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 600;
+}
+.plan-display-setting output {
+  color: var(--muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.plan-display-setting input[type="range"] {
+  width: 100%;
+  margin: 0;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+.plan-display-setting input[type="range"]:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+  border-radius: 999px;
+}
+.plan-display-scale {
+  display: flex;
+  justify-content: space-between;
+  color: var(--muted);
+  font-size: 10px;
+}
+.plan-display-reset {
+  width: 100%;
+  margin-top: 2px;
+  border-top: 1px solid var(--border);
+  border-radius: 0 0 7px 7px;
+  padding-top: 10px;
+  color: var(--muted);
+  text-align: center;
+}
+
 .steps-view { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
 .layout { flex: 1; display: grid; grid-template-columns: 1.1fr 1fr; min-height: 0; }
 .steps-pane, .detail-pane {
@@ -138,6 +190,8 @@ html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
 .detail-pane { border-right: none; background: #12151b; }
 
 .plan-view {
+  --plan-font-size: 15px;
+  --plan-text-width: 720px;
   flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: hidden; padding: 0;
   background:
     radial-gradient(1200px 500px at 10% -10%, #1a2438 0%, transparent 55%),
@@ -224,6 +278,15 @@ html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
 
 .plan-editor-body {
   flex: 1; min-height: 0; position: relative; display: flex; overflow: hidden;
+}
+.plan-editor-pane {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  justify-content: center;
+  overflow: hidden;
+  background: #0c0e13;
 }
 
 /* Find highlights inside preview */
@@ -318,34 +381,34 @@ html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
   flex: 1;
 }
 .plan-view[data-plan-mode="preview"] .plan-md {
-  max-width: 720px; margin: 0 auto; width: 100%;
+  max-width: var(--plan-text-width); margin: 0 auto; width: 100%;
 }
 
 /* Edit-only */
 .plan-view[data-plan-mode="edit"] .plan-editor {
-  flex: 1; width: 100%; max-width: none;
+  max-width: var(--plan-text-width);
 }
 .plan-view[data-plan-mode="edit"] .plan-preview-pane {
   display: none;
 }
 
 /* Split */
-.plan-view[data-plan-mode="split"] .plan-editor {
+.plan-view[data-plan-mode="split"] .plan-editor-pane {
   flex: 1; min-width: 0; border-right: 1px solid var(--border);
 }
 .plan-view[data-plan-mode="split"] .plan-preview-pane {
   flex: 1; min-width: 0;
 }
 .plan-view[data-plan-mode="split"] .plan-md {
-  max-width: none; margin: 0;
+  max-width: var(--plan-text-width); margin: 0 auto;
 }
 
 .plan-editor {
-  width: 100%; height: 100%; min-height: 0; resize: none;
+  width: 100%; max-width: var(--plan-text-width); height: 100%; min-height: 0; resize: none;
   border: none; padding: 20px 24px 48px;
   background: #0c0e13; color: var(--text);
   font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
-  font-size: 13.5px; line-height: 1.55;
+  font-size: var(--plan-font-size); line-height: 1.55;
   tab-size: 2;
 }
 .plan-editor:focus { outline: none; box-shadow: inset 0 0 0 1px #2a4570; }
@@ -364,8 +427,8 @@ html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
 }
 
 .plan-md {
-  max-width: 720px; margin: 0 auto; padding: 28px 28px 48px;
-  line-height: 1.6; font-size: 15px; color: var(--text);
+  width: 100%; max-width: var(--plan-text-width); margin: 0 auto; padding: 28px 28px 48px;
+  line-height: 1.6; font-size: var(--plan-font-size); color: var(--text);
 }
 .plan-md kbd {
   font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
@@ -380,18 +443,18 @@ html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
 }
 .markdown-body .md-image { margin: 0; }
 .markdown-body h1 {
-  font-size: 1.75rem; font-weight: 700; letter-spacing: -0.02em;
+  font-size: 1.75em; font-weight: 700; letter-spacing: -0.02em;
   margin: 0 0 16px; padding-bottom: 12px; border-bottom: 1px solid var(--border);
 }
 .markdown-body h2 {
-  font-size: 1.25rem; font-weight: 650; margin: 28px 0 12px; color: var(--text);
+  font-size: 1.25em; font-weight: 650; margin: 28px 0 12px; color: var(--text);
 }
-.markdown-body h3 { font-size: 1.05rem; font-weight: 600; margin: 22px 0 10px; }
+.markdown-body h3 { font-size: 1.05em; font-weight: 600; margin: 22px 0 10px; }
 .markdown-body h4, .markdown-body h5, .markdown-body h6 {
-  font-size: 0.95rem; font-weight: 600; margin: 18px 0 8px; color: var(--muted);
+  font-size: 0.95em; font-weight: 600; margin: 18px 0 8px; color: var(--muted);
 }
 .markdown-body p { margin: 0 0 12px; color: #d5dbe8; }
-.markdown-body .list-cont { margin: 4px 0 0; color: var(--muted); font-size: 14px; line-height: 1.45; }
+.markdown-body .list-cont { margin: 4px 0 0; color: var(--muted); font-size: 0.93em; line-height: 1.45; }
 .markdown-body .task-body { flex: 1; min-width: 0; }
 .markdown-body ul, .markdown-body ol { margin: 0 0 14px; padding-left: 1.4rem; }
 .markdown-body li { margin: 6px 0; }
@@ -424,7 +487,7 @@ html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
   padding: 14px 16px; overflow: auto; margin: 0 0 16px;
 }
 .markdown-body pre code {
-  background: none; border: none; padding: 0; font-size: 13px; line-height: 1.5;
+  background: none; border: none; padding: 0; font-size: 0.87em; line-height: 1.5;
 }
 .markdown-body a { color: var(--accent); text-decoration: none; }
 .markdown-body a:hover { text-decoration: underline; }
@@ -860,7 +923,7 @@ dialog::backdrop { background: rgba(0,0,0,0.55); }
   .plan-view[data-plan-mode="split"] .plan-editor-body {
     flex-direction: column;
   }
-  .plan-view[data-plan-mode="split"] .plan-editor {
+  .plan-view[data-plan-mode="split"] .plan-editor-pane {
     border-right: none; border-bottom: 1px solid var(--border); max-height: 45%;
   }
   .plan-outline {

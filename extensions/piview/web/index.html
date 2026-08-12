@@ -27,6 +27,28 @@
       </nav>
       <div class="spacer"></div>
       <button type="button" id="btn-add" class="btn hidden">+ Step</button>
+      <div id="plan-display-menu" class="menu plan-display-menu">
+        <button type="button" id="btn-plan-display" class="btn" title="Adjust plan font size and text width" aria-haspopup="dialog" aria-controls="plan-display-panel" aria-expanded="false">Display ▾</button>
+        <div id="plan-display-panel" class="menu-panel plan-display-panel hidden" role="dialog" aria-label="Plan display settings">
+          <div class="plan-display-setting">
+            <div class="plan-display-setting-head">
+              <label for="plan-font-size">Font size</label>
+              <output id="plan-font-size-value" for="plan-font-size">15px</output>
+            </div>
+            <input id="plan-font-size" type="range" min="12" max="24" step="1" value="15" aria-label="Plan font size" />
+            <div class="plan-display-scale" aria-hidden="true"><span>Smaller</span><span>Larger</span></div>
+          </div>
+          <div class="plan-display-setting">
+            <div class="plan-display-setting-head">
+              <label for="plan-text-width">Text width</label>
+              <output id="plan-text-width-value" for="plan-text-width">720px</output>
+            </div>
+            <input id="plan-text-width" type="range" min="480" max="1440" step="40" value="720" aria-label="Plan text width" />
+            <div class="plan-display-scale" aria-hidden="true"><span>Narrower</span><span>Wider</span></div>
+          </div>
+          <button type="button" id="btn-plan-display-reset" class="menu-item plan-display-reset">Reset display</button>
+        </div>
+      </div>
       <button id="btn-edit-plan" class="btn" type="button" title="Edit plan document (E)">Edit</button>
       <button id="btn-done-edit" class="btn primary hidden" type="button" title="Finish editing">Done</button>
       <div id="export-menu" class="menu hidden">
@@ -85,13 +107,15 @@
         <div id="plan-drop-overlay" class="plan-drop-overlay hidden" aria-hidden="true">
           <div class="plan-drop-card">Drop image to attach</div>
         </div>
-        <textarea
-          id="plan-editor"
-          class="plan-editor hidden"
-          spellcheck="true"
-          aria-label="Plan markdown"
-          placeholder="# Plan title&#10;&#10;Context and approach…&#10;&#10;1. [ ] **First step**&#10;   Details for the executor"
-        ></textarea>
+        <div id="plan-editor-pane" class="plan-editor-pane hidden">
+          <textarea
+            id="plan-editor"
+            class="plan-editor hidden"
+            spellcheck="true"
+            aria-label="Plan markdown"
+            placeholder="# Plan title&#10;&#10;Context and approach…&#10;&#10;1. [ ] **First step**&#10;   Details for the executor"
+          ></textarea>
+        </div>
         <div id="plan-preview-pane" class="plan-preview-pane">
           <nav id="plan-outline" class="plan-outline hidden" aria-label="Plan outline">
             <div class="plan-outline-head">On this page</div>

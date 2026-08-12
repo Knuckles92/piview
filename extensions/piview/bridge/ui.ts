@@ -76,6 +76,7 @@ export function createUiHub(opts: {
 	let tempAssetDir = "";
 	let changeStore: ChangeStore | null = null;
 	const subs = new Set<(chunk: string) => void>();
+	const eventStreams = new Map<ServerResponse, () => void>();
 
 	function emit(event: string, payload: unknown): void {
 		const data = JSON.stringify(payload);
@@ -174,12 +175,17 @@ export function createUiHub(opts: {
 			}
 		}, 15_000);
 
+		let cleanedUp = false;
 		const cleanup = () => {
+			if (cleanedUp) return;
+			cleanedUp = true;
 			clearInterval(ping);
 			subs.delete(send);
+			eventStreams.delete(res);
 		};
-		req.on("close", cleanup);
-		res.on("close", cleanup);
+		eventStreams.set(res, cleanup);
+		req.once("close", cleanup);
+		res.once("close", cleanup);
 	}
 
 	async function handleReplace(req: IncomingMessage, res: ServerResponse): Promise<void> {
@@ -437,6 +443,20 @@ export function createUiHub(opts: {
 		},
 
 		close() {
+			// SSE responses are intentionally long-lived. Merely dropping their send
+			// callbacks leaves the HTTP requests open, which makes httpServer.close()
+			// (and therefore Pi's session_shutdown) wait forever.
+			for (const [res, cleanup] of [...eventStreams]) {
+				cleanup();
+				if (!res.writableEnded) {
+					try {
+						res.end();
+					} catch {
+						res.destroy();
+					}
+				}
+			}
+			eventStreams.clear();
 			subs.clear();
 			if (tempAssetDir) {
 				try {

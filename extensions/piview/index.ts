@@ -1,9 +1,9 @@
 /**
- * piview — plan-mode companion for pi
+ * piview — standalone planning companion for pi
  *
- * /plangui  open long-lived plan viewer (local HTTP UI)
- * /plan     toggle plan mode (TUI-only ok)
- * /todos    show plan progress
+ * /piview        open/manage the long-lived plan viewer (local HTTP UI)
+ * /piview on     enable piview planning without opening the GUI
+ * /piview todos  show piview plan progress
  */
 
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
@@ -46,10 +46,11 @@ import {
 	synthesizePlanMarkdown,
 } from "./utils.ts";
 
-const PLAN_MODE_TOOLS = ["read", "bash", "grep", "find", "ls", "questionnaire", "update_plan"];
-const NORMAL_MODE_TOOLS = ["read", "bash", "edit", "write"];
-const PLAN_MODE_DISABLED_TOOLS = new Set<string>(["edit", "write"]);
-const PLAN_MANAGED_TOOLS = new Set<string>([...PLAN_MODE_TOOLS, ...NORMAL_MODE_TOOLS]);
+const PIVIEW_PLAN_TOOL = "piview_plan";
+const PIVIEW_PLANNING_CONTEXT = "piview-planning-context";
+const PIVIEW_EXECUTION_CONTEXT = "piview-execution-context";
+const PIVIEW_PLANNING_TOOLS = ["read", "bash", "grep", "find", "ls", "questionnaire", PIVIEW_PLAN_TOOL];
+const PIVIEW_DISABLED_TOOLS = new Set<string>(["edit", "write"]);
 
 function isAssistantMessage(m: AgentMessage): m is AssistantMessage {
 	return m.role === "assistant" && Array.isArray(m.content);
@@ -72,18 +73,12 @@ export default function piviewExtension(pi: ExtensionAPI): void {
 	let bridge: BridgeServer | undefined;
 	let lastCtx: ExtensionContext | undefined;
 	const changeStore = new ChangeStore();
-	// True when update_plan ran during the current agent run; the chat-text
+	// True when piview_plan ran during the current agent run; the chat-text
 	// fallback parser must not overwrite a plan authored via the tool.
 	let planUpdatedByTool = false;
 
-	pi.registerFlag("plan", {
-		description: "Start in plan mode (read-only exploration)",
-		type: "boolean",
-		default: false,
-	});
-
-	pi.registerFlag("plangui", {
-		description: "Start in plan mode and open the piview GUI",
+	pi.registerFlag("piview", {
+		description: "Start piview planning and open its GUI",
 		type: "boolean",
 		default: false,
 	});
@@ -103,31 +98,25 @@ export default function piviewExtension(pi: ExtensionAPI): void {
 		persist();
 	}
 
-	function getPlanModeTools(activeToolNames: string[]): string[] {
+	function getPiviewPlanningTools(activeToolNames: string[]): string[] {
 		return uniqueToolNames([
-			...activeToolNames.filter((name) => !PLAN_MODE_DISABLED_TOOLS.has(name)),
-			...PLAN_MODE_TOOLS,
+			...activeToolNames.filter((name) => !PIVIEW_DISABLED_TOOLS.has(name)),
+			...PIVIEW_PLANNING_TOOLS,
 		]);
 	}
 
-	function getNormalModeTools(activeToolNames: string[]): string[] {
-		return uniqueToolNames([
-			...NORMAL_MODE_TOOLS,
-			...activeToolNames.filter((name) => !PLAN_MANAGED_TOOLS.has(name) || name === "update_plan"),
-		]);
-	}
-
-	function enablePlanModeTools(): void {
+	function enablePiviewPlanningTools(): void {
 		if (toolsBeforePlanMode === undefined) {
 			toolsBeforePlanMode = pi.getActiveTools();
 		}
-		pi.setActiveTools(getPlanModeTools(toolsBeforePlanMode));
+		pi.setActiveTools(getPiviewPlanningTools(toolsBeforePlanMode));
 	}
 
 	function restoreNormalModeTools(): void {
-		const base = toolsBeforePlanMode ?? getNormalModeTools(pi.getActiveTools());
-		// Keep update_plan available only during planning/exec setup; drop when fully off
-		pi.setActiveTools(base.filter((t) => t !== "update_plan"));
+		const base = toolsBeforePlanMode ?? pi.getActiveTools();
+		// Restore exactly the tool set from before piview planning. This preserves
+		// user configuration and another extension's read-only mode.
+		pi.setActiveTools(base.filter((t) => t !== PIVIEW_PLAN_TOOL));
 		toolsBeforePlanMode = undefined;
 	}
 
@@ -140,7 +129,7 @@ export default function piviewExtension(pi: ExtensionAPI): void {
 			},
 			"planning",
 		);
-		enablePlanModeTools();
+		enablePiviewPlanningTools();
 		publish(ctx);
 	}
 
@@ -205,10 +194,10 @@ export default function piviewExtension(pi: ExtensionAPI): void {
 				case "set_mode": {
 					if (msg.mode === "planning") {
 						enterPlanning(c);
-						c.ui.notify("Plan mode enabled", "info");
+						c.ui.notify("piview planning enabled", "info");
 					} else {
 						exitPlanModes(c);
-						c.ui.notify("Plan mode disabled", "info");
+						c.ui.notify("piview planning disabled", "info");
 					}
 					break;
 				}
@@ -254,7 +243,7 @@ export default function piviewExtension(pi: ExtensionAPI): void {
 		}
 
 		const OPEN = "Open plan GUI";
-		const STAY = "Stay in plan mode";
+		const STAY = "Stay in piview planning";
 		const REFINE = "Refine the plan";
 		const EXECUTE = "Execute the plan";
 
@@ -285,7 +274,7 @@ export default function piviewExtension(pi: ExtensionAPI): void {
 				return;
 			}
 			default:
-				// Cancelled / dismissed — remain in plan mode, do not execute.
+				// Cancelled / dismissed — remain in piview planning, do not execute.
 				return;
 		}
 	}
@@ -332,16 +321,17 @@ export default function piviewExtension(pi: ExtensionAPI): void {
 			}
 		}
 		restoreNormalModeTools();
-		// Ensure write tools on for execution; keep update_plan so the model can revise the plan mid-run
+		// Restore the pre-piview tool set for execution and keep piview's plan tool
+		// available for mid-run revisions. Do not override another extension's tool restrictions.
 		const active = pi.getActiveTools();
-		pi.setActiveTools(uniqueToolNames([...active, "read", "bash", "edit", "write", "update_plan"]));
+		pi.setActiveTools(uniqueToolNames([...active, PIVIEW_PLAN_TOOL]));
 		publish(ctx);
 
 		const execMessage = executionKickoff(state);
 
 		pi.sendMessage(
 			{
-				customType: "plan-todo-list",
+				customType: "piview-todo-list",
 				content: `**Plan Steps (${state.steps.length}):**\n\n${state.steps
 					.map((t) => `${t.step}. ${t.status === "done" ? "☑" : "☐"} ${t.title}`)
 					.join("\n")}`,
@@ -350,15 +340,15 @@ export default function piviewExtension(pi: ExtensionAPI): void {
 			{ deliverAs: "followUp" },
 		);
 		pi.sendMessage(
-			{ customType: "plan-mode-execute", content: execMessage, display: true },
+			{ customType: "piview-execute", content: execMessage, display: true },
 			{ triggerTurn: true, deliverAs: "followUp" },
 		);
 	}
 
 	// --- tools ---
 	pi.registerTool({
-		name: "update_plan",
-		label: "Update Plan",
+		name: PIVIEW_PLAN_TOOL,
+		label: "Update piview Plan",
 		description: UPDATE_PLAN_DESCRIPTION,
 		promptSnippet: "Create or revise the structured implementation plan",
 		promptGuidelines: UPDATE_PLAN_GUIDELINES,
@@ -430,62 +420,79 @@ export default function piviewExtension(pi: ExtensionAPI): void {
 	});
 
 	// --- commands ---
-	pi.registerCommand("plangui", {
-		description: "Open plan GUI companion (enables plan mode). Use: /plangui | /plangui close",
+	function showPiviewTodos(ctx: ExtensionContext): void {
+		if (state.steps.length === 0) {
+			ctx.ui.notify("No piview steps. Use /piview to start a planning session.", "info");
+			return;
+		}
+		const { done, total } = progress(state);
+		const list = state.steps
+			.map((item) => {
+				const mark =
+					item.status === "done" ? "✓" : item.status === "active" ? "▶" : item.status === "skipped" ? "–" : "○";
+				return `${item.step}. ${mark} ${item.title}`;
+			})
+			.join("\n");
+		ctx.ui.notify(`piview (${state.mode}) ${done}/${total}:\n${list}`, "info");
+		bridge?.broadcast({ v: 1, type: "plan_state", state });
+	}
+
+	pi.registerCommand("piview", {
+		description: "Open or manage piview. Use: /piview [open|close|on|off|todos]",
+		getArgumentCompletions: (prefix) => {
+			const actions = ["open", "close", "on", "off", "todos"];
+			const matches = actions.filter((action) => action.startsWith(prefix.toLowerCase()));
+			return matches.length ? matches.map((value) => ({ value, label: value })) : null;
+		},
 		handler: async (args, ctx) => {
 			lastCtx = ctx;
-			const a = args.trim().toLowerCase();
-			if (a === "close" || a === "quit" || a === "stop") {
+			const action = args.trim().toLowerCase() || "open";
+
+			if (action === "close" || action === "quit" || action === "stop") {
 				if (bridge) {
 					await bridge.stop("user closed");
 					bridge = undefined;
 				}
-				ctx.ui.notify("Plan GUI closed", "info");
+				const suffix = state.mode === "planning" ? "; piview planning remains active" : "";
+				ctx.ui.notify(`piview GUI closed${suffix}`, "info");
 				return;
 			}
 
-			if (state.mode === "off") {
+			if (action === "todos" || action === "status") {
+				showPiviewTodos(ctx);
+				return;
+			}
+
+			if (action === "off" || action === "disable") {
+				if (state.mode === "executing") {
+					ctx.ui.notify("piview is executing a plan. Finish the run before disabling it.", "warning");
+					return;
+				}
+				if (state.mode !== "off") exitPlanModes(ctx);
+				ctx.ui.notify("piview planning disabled. Full access restored.", "info");
+				return;
+			}
+
+			if (action === "on" || action === "enable") {
+				if (state.mode === "executing") {
+					ctx.ui.notify("piview is already executing a plan.", "warning");
+					return;
+				}
+				if (state.mode !== "planning") enterPlanning(ctx);
+				ctx.ui.notify("piview planning enabled. Built-in write tools disabled.", "info");
+				return;
+			}
+
+			if (action !== "open") {
+				ctx.ui.notify("Usage: /piview [open|close|on|off|todos]", "warning");
+				return;
+			}
+
+			if (state.mode === "off" || state.mode === "complete") {
 				enterPlanning(ctx);
-				ctx.ui.notify("Plan mode enabled (read-only). Opened GUI.", "info");
+				ctx.ui.notify("piview planning enabled (read-only).", "info");
 			}
 			await openGui(ctx);
-		},
-	});
-
-	pi.registerCommand("plan", {
-		description: "Toggle plan mode (read-only exploration)",
-		handler: async (_args, ctx) => {
-			lastCtx = ctx;
-			if (state.mode === "planning") {
-				exitPlanModes(ctx);
-				ctx.ui.notify("Plan mode disabled. Full access restored.", "info");
-			} else if (state.mode === "executing") {
-				ctx.ui.notify("Currently executing a plan. Finish or clear steps first.", "warning");
-			} else {
-				enterPlanning(ctx);
-				ctx.ui.notify("Plan mode enabled. Built-in write tools disabled.", "info");
-			}
-		},
-	});
-
-	pi.registerCommand("todos", {
-		description: "Show current plan todo list",
-		handler: async (_args, ctx) => {
-			lastCtx = ctx;
-			if (state.steps.length === 0) {
-				ctx.ui.notify("No plan steps. Use /plangui or ask for a plan in plan mode.", "info");
-				return;
-			}
-			const { done, total } = progress(state);
-			const list = state.steps
-				.map((item) => {
-					const mark =
-						item.status === "done" ? "✓" : item.status === "active" ? "▶" : item.status === "skipped" ? "–" : "○";
-					return `${item.step}. ${mark} ${item.title}`;
-				})
-				.join("\n");
-			ctx.ui.notify(`Plan (${state.mode}) ${done}/${total}:\n${list}`, "info");
-			bridge?.broadcast({ v: 1, type: "plan_state", state });
 		},
 	});
 
@@ -509,21 +516,21 @@ export default function piviewExtension(pi: ExtensionAPI): void {
 			cwd: ctx.cwd,
 		};
 
-		const flagPlan = pi.getFlag("plan") === true || pi.getFlag("plangui") === true;
-		if (flagPlan && state.mode === "off") {
+		const flagPiview = pi.getFlag("piview") === true;
+		if (flagPiview && state.mode === "off") {
 			state = setMode(state, "planning");
 		}
 
 		if (state.mode === "planning") {
-			enablePlanModeTools();
+			enablePiviewPlanningTools();
 		} else if (state.mode === "executing") {
 			const active = pi.getActiveTools();
-			pi.setActiveTools(uniqueToolNames([...active, "read", "bash", "edit", "write", "update_plan"]));
+			pi.setActiveTools(uniqueToolNames([...active, PIVIEW_PLAN_TOOL]));
 		}
 
 		updateTui(ctx, state);
 
-		if (pi.getFlag("plangui") === true || (event.reason === "startup" && process.env.PIVIEW_AUTO === "1")) {
+		if (flagPiview || (event.reason === "startup" && process.env.PIVIEW_AUTO === "1")) {
 			try {
 				await openGui(ctx);
 			} catch (err) {
@@ -546,7 +553,7 @@ export default function piviewExtension(pi: ExtensionAPI): void {
 		if (!isSafeCommand(command)) {
 			return {
 				block: true,
-				reason: `Plan mode: command blocked (not allowlisted). Use /plan to disable.\nCommand: ${command}`,
+				reason: `piview planning: command blocked (not allowlisted). Use /piview off to disable.\nCommand: ${command}`,
 			};
 		}
 	});
@@ -603,18 +610,34 @@ export default function piviewExtension(pi: ExtensionAPI): void {
 	});
 
 	pi.on("context", async (event) => {
-		if (state.mode === "planning") return;
 		return {
 			messages: event.messages.filter((m) => {
 				const msg = m as AgentMessage & { customType?: string };
-				if (msg.customType === "plan-mode-context") return false;
-				if (msg.role !== "user") return true;
-				const content = msg.content;
-				if (typeof content === "string") return !content.includes("[PLAN MODE ACTIVE]");
-				if (Array.isArray(content)) {
-					return !content.some(
-						(c) => c.type === "text" && (c as TextContent).text?.includes("[PLAN MODE ACTIVE]"),
-					);
+				if (msg.customType === PIVIEW_PLANNING_CONTEXT) return state.mode === "planning";
+				if (msg.customType === PIVIEW_EXECUTION_CONTEXT) return state.mode === "executing";
+
+				// Remove only piview's legacy unnamespaced contexts. Do not remove the
+				// stock plan-mode extension's messages when both packages are installed.
+				if (
+					(msg.customType === "plan-mode-context" || msg.customType === "plan-execution-context") &&
+					msg.role === "user"
+				) {
+					const content = msg.content;
+					const text = typeof content === "string"
+						? content
+						: Array.isArray(content)
+							? content
+								.filter((c): c is TextContent => c.type === "text")
+								.map((c) => c.text)
+								.join("\n")
+							: "";
+					const isLegacyPlanning =
+						msg.customType === "plan-mode-context" &&
+						text.includes("[PLAN MODE ACTIVE]") &&
+						text.includes("piview GUI");
+					const isLegacyExecution =
+						msg.customType === "plan-execution-context" && text.includes("progress is tracked in the GUI");
+					if (isLegacyPlanning || isLegacyExecution) return false;
 				}
 				return true;
 			}),
@@ -625,7 +648,7 @@ export default function piviewExtension(pi: ExtensionAPI): void {
 		if (state.mode === "planning") {
 			return {
 				message: {
-					customType: "plan-mode-context",
+					customType: PIVIEW_PLANNING_CONTEXT,
 					content: planningPrompt(state),
 					display: false,
 				},
@@ -635,7 +658,7 @@ export default function piviewExtension(pi: ExtensionAPI): void {
 		if (state.mode === "executing" && state.steps.length > 0) {
 			return {
 				message: {
-					customType: "plan-execution-context",
+					customType: PIVIEW_EXECUTION_CONTEXT,
 					content: executionPrompt(state),
 					display: false,
 				},
@@ -670,7 +693,7 @@ export default function piviewExtension(pi: ExtensionAPI): void {
 			if (allStepsDone(state)) {
 				pi.sendMessage(
 					{
-						customType: "plan-complete",
+						customType: "piview-complete",
 						content: `**Plan Complete!** ✓\n\n${state.steps.map((t) => `~~${t.title}~~`).join("\n")}`,
 						display: true,
 					},
@@ -684,7 +707,7 @@ export default function piviewExtension(pi: ExtensionAPI): void {
 
 		if (state.mode !== "planning" || !ctx.hasUI) return;
 
-		// Chat-text fallback for when update_plan is unavailable. Skip it when the
+		// Chat-text fallback for when piview_plan is unavailable. Skip it when the
 		// tool ran this turn — a chat summary must not clobber the authored plan.
 		// Non-plan replies are captured as response tabs instead of filling markdown.
 		const lastAssistant = [...event.messages].reverse().find(isAssistantMessage);

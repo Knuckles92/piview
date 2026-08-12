@@ -6,6 +6,7 @@ import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createBridgeServer } from "../extensions/piview/bridge/server.ts";
+import piviewExtension from "../extensions/piview/index.ts";
 import { ChangeStore } from "../extensions/piview/changes.ts";
 import {
   applyOps,
@@ -18,6 +19,28 @@ import {
 import { executionDashboardModel, formatDuration } from "../extensions/piview/web/execution-dashboard.js";
 import { ensurePlanMarkdown, parseOutline, renderMarkdown } from "../extensions/piview/web/markdown.js";
 import WebSocket from "ws";
+
+// piview must not claim regular plan mode's public or model-facing namespace.
+const extensionSurface = { commands: [], flags: [], tools: [] };
+piviewExtension({
+  registerCommand(name) {
+    extensionSurface.commands.push(name);
+  },
+  registerFlag(name) {
+    extensionSurface.flags.push(name);
+  },
+  registerTool(definition) {
+    extensionSurface.tools.push(definition.name);
+  },
+  on() {},
+});
+if (
+  extensionSurface.commands.join(",") !== "piview" ||
+  extensionSurface.flags.join(",") !== "piview" ||
+  extensionSurface.tools.join(",") !== "piview_plan"
+) {
+  throw new Error(`piview extension surface is not standalone: ${JSON.stringify(extensionSurface)}`);
+}
 
 const bridge = createBridgeServer({ sessionId: "smoke", cwd: process.cwd() });
 let gotOps = false;
@@ -186,8 +209,31 @@ await new Promise((resolve, reject) => {
   ws.on("error", reject);
 });
 
+// Keep the browser's long-lived SSE stream open while stopping. Pi awaits
+// bridge.stop() from session_shutdown for commands such as /new and /reload.
+const sseAbort = new AbortController();
+const sseResponse = await fetch(new URL("/api/events", uiUrl), { signal: sseAbort.signal });
+if (!sseResponse.ok || !sseResponse.headers.get("content-type")?.includes("text/event-stream")) {
+  throw new Error("/api/events failed");
+}
+
 ws.close();
-await bridge.stop("smoke done");
+const stopPromise = bridge.stop("smoke done");
+let stopTimer;
+const stoppedPromptly = await Promise.race([
+  stopPromise.then(() => true),
+  new Promise((resolve) => {
+    stopTimer = setTimeout(() => resolve(false), 2000);
+  }),
+]);
+clearTimeout(stopTimer);
+sseAbort.abort();
+if (!stoppedPromptly) {
+  // Aborting the client lets a broken implementation finish so the test can
+  // report a useful failure instead of leaving the Node process hung.
+  await stopPromise;
+  throw new Error("bridge.stop hung with an active SSE subscriber");
+}
 
 if (!events.includes("hello")) throw new Error("missing hello");
 if (!gotOps) throw new Error("missing plan_ops handling");

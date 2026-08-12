@@ -1,4 +1,4 @@
-/** Pure helpers for plan mode (bash allowlist + plan extraction). */
+/** Pure helpers for piview planning (bash allowlist + plan extraction). */
 
 const DESTRUCTIVE_PATTERNS = [
 	/\brm\b/i,

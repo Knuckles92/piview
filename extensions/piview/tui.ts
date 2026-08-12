@@ -6,11 +6,11 @@ export function updateTui(ctx: ExtensionContext, state: PlanState): void {
 	const { done, total } = progress(state);
 
 	if (state.mode === "executing" && total > 0) {
-		ctx.ui.setStatus("piview", ctx.ui.theme.fg("accent", `📋 ${done}/${total}`));
+		ctx.ui.setStatus("piview", ctx.ui.theme.fg("accent", `📋 piview ${done}/${total}`));
 	} else if (state.mode === "planning") {
-		ctx.ui.setStatus("piview", ctx.ui.theme.fg("warning", "⏸ plan"));
+		ctx.ui.setStatus("piview", ctx.ui.theme.fg("warning", "⏸ piview"));
 	} else if (state.mode === "complete") {
-		ctx.ui.setStatus("piview", ctx.ui.theme.fg("success", "✓ plan done"));
+		ctx.ui.setStatus("piview", ctx.ui.theme.fg("success", "✓ piview done"));
 	} else {
 		ctx.ui.setStatus("piview", undefined);
 	}

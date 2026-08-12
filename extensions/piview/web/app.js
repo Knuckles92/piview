@@ -393,7 +393,7 @@ function currentEditorMarkdown() {
 function renderPlanMarkdown(src) {
   const el = $("plan-md");
   if (!src || !String(src).trim()) {
-    el.innerHTML = `<p class="empty">No plan yet. Ask pi for a plan in plan mode.${
+    el.innerHTML = `<p class="empty">No plan yet. Start piview with <code>/piview</code>, then ask pi for a plan.${
       state.editing ? " Start typing on the left, or press <kbd>E</kbd>." : " Press <kbd>E</kbd> or Edit to write one."
     }</p>`;
     renderOutlineFromPreview();

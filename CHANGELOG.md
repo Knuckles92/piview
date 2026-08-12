@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- pi extension with `/plangui`, `/plan`, `/todos`, and `update_plan` tool
+- pi extension with namespaced `/piview` command, `--piview` flag, and `piview_plan` tool
 - Localhost HTTP plan UI (static files + SSE) served by the extension
 - Localhost WebSocket bridge with per-session token auth (for protocol clients)
 - Protocol v1 schema and docs under `protocol/`
@@ -24,10 +24,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- Plan GUI no longer requires a separate Go companion binary; `/plangui` opens the browser against the extension’s local HTTP server
+- Plan GUI no longer requires a separate Go companion binary; `/piview` opens the browser against the extension’s local HTTP server
 - Removed `postinstall` / `build:viewer` Go build step and `PIVIEW_BIN` / `PIVIEW_SKIP_VIEWER_BUILD` env vars
 - Plan-ready prompt: **Open plan GUI** is the default action; opening the GUI no longer risks starting execution. Execute requires an explicit TUI confirm or the GUI Execute button
+- piview is now independent from regular plan mode: it no longer registers `/plan`, `/todos`, or `--plan`, uses namespaced context/tool identifiers, and preserves the pre-piview tool set
 
 ### Fixed
 
-- Choosing “Open plan GUI” after a plan is proposed no longer starts execution; the agent stays in plan mode until Execute is chosen deliberately
+- Choosing “Open plan GUI” after a plan is proposed no longer starts execution; the agent stays in piview planning until Execute is chosen deliberately
+- Active browser SSE/WebSocket connections no longer block Pi session commands such as `/new`, `/resume`, and `/reload` during extension shutdown

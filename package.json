@@ -1,7 +1,7 @@
 {
   "name": "piview",
   "version": "0.1.0",
-  "description": "Plan-mode GUI companion for pi — TUI stays primary, /plangui opens a long-lived viewer",
+  "description": "Standalone planning GUI for pi — TUI stays primary, /piview opens a long-lived viewer",
   "type": "module",
   "keywords": [
     "pi-package",

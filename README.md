@@ -4,10 +4,10 @@ A plan board for [pi](https://pi.dev) — so you can see the work, not just scro
 
 When a coding agent is planning a multi-step change, the terminal is great for the conversation and a poor place to *hold* the plan. piview keeps pi’s TUI as home base, and gives the plan its own window: readable document, editable steps, live progress.
 
-Type **`/plangui`**. A local browser window opens beside your session. The agent writes structured plans; you can reorder steps, tweak wording, kick off execute/refine, and watch files and tools move as work lands. Close the window whenever — the session never left the terminal.
+Type **`/piview`**. A local browser window opens beside your session. The agent writes structured plans; you can reorder steps, tweak wording, kick off execute/refine, and watch files and tools move as work lands. Close the window whenever — the session never left the terminal.
 
 ```
-pi TUI  ←→  extension (HTTP UI + WS bridge + plan mode)  ←→  browser (app mode)
+pi TUI  ←→  extension (HTTP UI + WS bridge + piview planning)  ←→  browser (app mode)
 ```
 
 ## Screenshots
@@ -30,15 +30,18 @@ Live execution dashboard with metrics, file edits, and tool activity:
 - Steps you can actually work with — filter, reorder, edit detail, bulk-update status, then apply back into pi
 - Execution you can follow — which step is running, what got edited, what tools fired
 - The same session, two views — TUI stays primary; the GUI is optional and local-only
-- Agent-native planning — `update_plan` tool + structured state, with `/plan` and `/todos` when you want the terminal only
+- Agent-native planning — namespaced `piview_plan` tool + structured state
+- Independent from Pi’s regular plan mode — piview does not register `/plan`, `/todos`, or `--plan`
 
 ### Commands & pieces
 
-- `/plangui` — enable plan mode + open/focus the plan GUI
-- `/plan` — toggle plan mode without the GUI
-- `/todos` — show plan progress in the TUI
+- `/piview` or `/piview open` — enable piview planning + open/focus the GUI
+- `/piview on` — enable piview planning without opening the GUI
+- `/piview off` — leave piview planning and restore the prior tool set
+- `/piview close` — close only the GUI bridge
+- `/piview todos` — show piview progress in the TUI
 - Structured plan state (not only markdown scraping)
-- `update_plan` tool for the model
+- `piview_plan` tool for the model
 - Edit steps in the GUI → apply back into pi
 - Execute / Refine from the GUI
 - TUI status + checklist widget fallback
@@ -63,14 +66,15 @@ pi install https://github.com/Knuckles92/piview
 
 `pi install` runs `npm install` for the package. No native toolchain is required — the plan UI is served from the Node extension and opened in your browser.
 
-### Conflict with stock plan-mode
+### Coexisting with regular plan mode
 
-piview is a plan-mode replacement and registers the same `--plan` flag. If you already installed `plan-mode` under `~/.pi/agent/extensions/` (or as another package), either:
+piview has its own namespace and can be installed alongside the stock `plan-mode` extension:
 
-- run with `--no-extensions` / `-ne` and load only piview, or
-- remove/disable the other plan-mode extension
+- `/plan` and `--plan` belong to regular plan mode
+- `/piview` and `--piview` belong to this extension
+- TUI indicators are labeled separately as `plan` and `piview`
 
-Otherwise pi fails with `Flag "--plan" conflicts`.
+Use one planning workflow at a time. If regular plan mode is already restricting tools, piview preserves that prior tool set rather than overriding it.
 
 ## Quick start (from a clone)
 
@@ -79,20 +83,18 @@ git clone https://github.com/Knuckles92/piview.git
 cd piview
 npm install
 
-# Use -ne so stock plan-mode is not also loaded.
-pi -ne -e ./extensions/piview
+pi -e ./extensions/piview
 ```
 
 Inside pi:
 
 ```text
-/plangui
+/piview
 ```
 
-### CLI flags (extension)
+### CLI flag (extension)
 
-- `--plan` — start in plan mode
-- `--plangui` — start in plan mode and open the GUI
+- `--piview` — start piview planning and open the GUI
 
 ### Environment
 
@@ -119,9 +121,9 @@ See [`protocol/README.md`](./protocol/README.md) and [`protocol/plan.schema.json
 ## Layout
 
 ```text
-extensions/piview/   # pi extension (bridge, plan mode, tools, web UI)
+extensions/piview/   # pi extension (bridge, piview workflow, tools, web UI)
   bridge/            # HTTP + WS server, browser opener
-  web/               # plan GUI (HTML/CSS/JS)
+  web/               # piview GUI (HTML/CSS/JS)
 protocol/            # shared schema
 scripts/             # smoke + spike
 ```
@@ -136,15 +138,11 @@ Report security issues via [GitHub Advisories](https://github.com/Knuckles92/piv
 
 ## Troubleshooting
 
-### `/plangui` could not open a browser
+### `/piview` could not open a browser
 
 1. Confirm a browser is installed and available on `PATH`.
 2. The notify toast includes the UI URL — open it manually if auto-launch fails.
-3. Retry `/plangui`. Plan mode via `/plan` still works in the TUI without the GUI.
-
-### Flag `"--plan" conflicts`
-
-Another extension already registered `--plan`. Use `pi -ne -e …/piview` or disable the other plan-mode package. See [Install](#install-pi-package).
+3. Retry `/piview`. Piview planning via `/piview on` still works in the TUI without the GUI.
 
 ## Development
 

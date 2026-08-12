@@ -170,23 +170,33 @@ export function createBridgeServer(options: BridgeOptions = {}): BridgeServer {
 			api.broadcast({ v: 1, type: "goodbye", reason });
 			for (const ws of clients) {
 				try {
-					ws.close();
+					// A graceful WebSocket close can wait indefinitely for a client close
+					// handshake. The goodbye message above has already been queued.
+					ws.terminate();
 				} catch {
 					/* ignore */
 				}
 			}
 			clients.clear();
+
+			// End long-lived SSE responses before waiting for the HTTP server.
 			ui?.close();
 			ui = undefined;
 
-			await new Promise<void>((resolve) => {
-				wss?.close(() => resolve());
-				if (!wss) resolve();
-			});
-			await new Promise<void>((resolve) => {
-				httpServer?.close(() => resolve());
-				if (!httpServer) resolve();
-			});
+			const websocketServer = wss;
+			if (websocketServer) {
+				await new Promise<void>((resolve) => websocketServer.close(() => resolve()));
+			}
+
+			const server = httpServer;
+			if (server) {
+				await new Promise<void>((resolve) => {
+					server.close(() => resolve());
+					// Force any non-SSE HTTP request or keep-alive socket that outlived
+					// UI cleanup to close as part of session replacement.
+					server.closeAllConnections();
+				});
+			}
 			wss = undefined;
 			httpServer = undefined;
 			started = false;

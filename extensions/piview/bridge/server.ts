@@ -1,6 +1,7 @@
 import { createServer, type Server as HttpServer, type IncomingMessage } from "node:http";
 import { randomBytes } from "node:crypto";
 import { WebSocketServer, type WebSocket } from "ws";
+import type { ChangeStore } from "../changes.ts";
 import { PROTOCOL_VERSION, isClientMessage, type ClientMessage, type ServerMessage } from "../protocol.ts";
 import { createUiHub, type UiHub } from "./ui.ts";
 
@@ -21,6 +22,7 @@ export interface BridgeServer {
 	setSessionMeta(meta: { sessionId: string; cwd: string }): void;
 	/** Seed / refresh the UI's plan snapshot without requiring a WS client. */
 	setPlan(state: import("../protocol.ts").PlanState): void;
+	setChangeStore(store: ChangeStore | null): void;
 }
 
 interface BridgeOptions {
@@ -233,6 +235,10 @@ export function createBridgeServer(options: BridgeOptions = {}): BridgeServer {
 
 		setPlan(state) {
 			ensureUi().setPlan(state);
+		},
+
+		setChangeStore(store) {
+			ensureUi().setChangeStore(store);
 		},
 	};
 

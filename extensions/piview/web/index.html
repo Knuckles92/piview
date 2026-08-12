@@ -13,6 +13,7 @@
         <span class="logo">piview</span>
         <span id="mode" class="badge mode-off">off</span>
       </div>
+      <nav id="response-tabs" class="response-tabs" role="tablist" aria-label="Responses"></nav>
       <div class="meta">
         <span id="conn" class="dot offline" title="connection"></span>
         <span id="cwd" class="cwd"></span>
@@ -20,12 +21,12 @@
     </header>
 
     <section class="toolbar">
-      <nav class="tabs" role="tablist" aria-label="Plan views">
+      <nav class="tabs" role="tablist" aria-label="Plan and execution views">
         <button type="button" id="tab-plan" class="tab active" role="tab" aria-selected="true" data-tab="plan">Plan</button>
-        <button type="button" id="tab-steps" class="tab" role="tab" aria-selected="false" data-tab="steps">Steps</button>
+        <button type="button" id="tab-steps" class="tab" role="tab" aria-selected="false" data-tab="steps">Execution dashboard</button>
       </nav>
       <div class="spacer"></div>
-      <button id="btn-add" class="btn hidden">+ Step</button>
+      <button type="button" id="btn-add" class="btn hidden">+ Step</button>
       <button id="btn-edit-plan" class="btn" type="button" title="Edit plan document (E)">Edit</button>
       <button id="btn-done-edit" class="btn primary hidden" type="button" title="Finish editing">Done</button>
       <div id="export-menu" class="menu hidden">
@@ -36,9 +37,9 @@
           <button type="button" class="menu-item" role="menuitem" data-export="copy-checklist">Copy checklist</button>
         </div>
       </div>
-      <button id="btn-execute" class="btn primary">Execute</button>
-      <button id="btn-refine" class="btn">Refine…</button>
-      <button id="btn-apply" class="btn ghost" disabled>Apply edits</button>
+      <button type="button" id="btn-execute" class="btn primary">Execute</button>
+      <button type="button" id="btn-refine" class="btn">Refine…</button>
+      <button type="button" id="btn-apply" class="btn ghost" disabled>Apply edits</button>
       <span id="progress" class="progress"></span>
     </section>
 
@@ -194,7 +195,11 @@
 
         <div class="execution-columns">
           <section class="panel-card" aria-labelledby="execution-files-title">
-            <div class="panel-heading"><p class="panel-label" id="execution-files-title">Recent file edits</p><span id="execution-files-count"></span></div>
+            <div class="panel-heading">
+              <p class="panel-label" id="execution-files-title">Recent file edits</p>
+              <span id="execution-files-count"></span>
+              <button type="button" id="btn-view-all-changes" class="btn ghost btn-compact hidden" title="Open all file changes">View all</button>
+            </div>
             <ul id="execution-files-list" class="execution-list"></ul>
           </section>
           <section class="panel-card" aria-labelledby="execution-activity-title">
@@ -236,6 +241,21 @@
         <button id="conflict-take" value="take" class="btn primary">Take server</button>
       </div>
     </form>
+  </dialog>
+
+  <dialog id="diff-dialog" class="diff-dialog" aria-labelledby="diff-dialog-title">
+    <div class="diff-dialog-chrome">
+      <div class="diff-dialog-toolbar">
+        <div class="plan-mode-toggle" role="group" aria-label="Diff layout">
+          <button type="button" class="mode-btn" data-diff-layout="unified" title="Unified diff">Unified</button>
+          <button type="button" class="mode-btn" data-diff-layout="split" title="Side by side">Side by side</button>
+        </div>
+        <div class="spacer"></div>
+        <button type="button" id="diff-copy-path" class="btn ghost btn-compact hidden" title="Copy path">Copy path</button>
+        <button type="button" id="diff-dialog-close" class="btn" value="close">Close</button>
+      </div>
+      <div id="diff-dialog-body" class="diff-dialog-body" tabindex="0"></div>
+    </div>
   </dialog>
 
   <dialog id="shortcuts-dialog">

@@ -2,7 +2,11 @@
 /**
  * Automated smoke: extension bridge module + ws client round-trip.
  */
+import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { createBridgeServer } from "../extensions/piview/bridge/server.ts";
+import { ChangeStore } from "../extensions/piview/changes.ts";
 import {
   applyOps,
   beginExecutionTelemetry,
@@ -59,7 +63,11 @@ let telemetryState = beginExecutionTelemetry(
   1_000,
 );
 telemetryState = recordExecutionToolStart(telemetryState, { toolCallId: "edit-1", toolName: "edit", path: "extensions/piview/web/app.js" }, 1_100);
-telemetryState = recordExecutionToolEnd(telemetryState, { toolCallId: "edit-1", toolName: "edit" }, 1_200);
+telemetryState = recordExecutionToolEnd(
+  telemetryState,
+  { toolCallId: "edit-1", toolName: "edit", diff: { additions: 3, deletions: 1, hasDiff: true } },
+  1_200,
+);
 telemetryState = recordExecutionToolStart(telemetryState, { toolCallId: "write-1", toolName: "write", path: "extensions/piview/web/app.js" }, 1_300);
 telemetryState = recordExecutionToolEnd(telemetryState, { toolCallId: "write-1", toolName: "write", isError: true }, 1_400);
 if (telemetryState.execution?.toolCallsCompleted !== 2 || telemetryState.execution.toolCallsFailed !== 1) {
@@ -67,6 +75,13 @@ if (telemetryState.execution?.toolCallsCompleted !== 2 || telemetryState.executi
 }
 if (telemetryState.execution.files.length !== 1 || telemetryState.execution.files[0].count !== 1) {
   throw new Error("only successful edit/write calls should become changed-file metrics");
+}
+if (
+  telemetryState.execution.files[0].additions !== 3 ||
+  telemetryState.execution.files[0].deletions !== 1 ||
+  telemetryState.execution.files[0].hasDiff !== true
+) {
+  throw new Error("execution file metrics must retain diff stats");
 }
 const dashboard = executionDashboardModel(telemetryState, 61_000);
 if (dashboard.percent !== 50 || dashboard.changedFiles !== 1 || dashboard.counts.failed !== 1 || dashboard.activeStep?.id !== "active") {
@@ -79,6 +94,24 @@ const legacyDashboard = executionDashboardModel({ v: 1, mode: "executing", steps
 if (legacyDashboard.toolCallsStarted !== 0 || legacyDashboard.elapsedMs !== null) {
   throw new Error("older plans without telemetry must render safe dashboard defaults");
 }
+
+const changeDir = mkdtempSync(join(tmpdir(), "piview-changes-"));
+const changeFile = join(changeDir, "sample.txt");
+writeFileSync(changeFile, "one\ntwo\n", "utf8");
+const store = new ChangeStore();
+store.configure(changeDir, "smoke-session");
+store.captureBefore("t1", "sample.txt");
+writeFileSync(changeFile, "one\ntwo\nthree\n", "utf8");
+const diffStats = store.commitAfter("t1", "edit");
+if (!diffStats?.hasDiff || diffStats.additions < 1) {
+  throw new Error("change store must capture cumulative line additions");
+}
+const listed = store.list();
+if (listed.length !== 1 || listed[0].path !== "sample.txt" || !listed[0].hunks.length) {
+  throw new Error("change store must expose hunks for captured edits");
+}
+store.clear();
+rmSync(changeDir, { recursive: true, force: true });
 
 bridge.onClientMessage((msg) => {
   if (msg.type === "plan_ops") {
@@ -115,6 +148,13 @@ if (stateJson.mode !== "planning") throw new Error("/api/state returned unexpect
 const indexRes = await fetch(uiUrl);
 if (!indexRes.ok || !(await indexRes.text()).includes("piview")) {
   throw new Error("UI index.html not served");
+}
+
+const changesRes = await fetch(new URL("/api/changes", uiUrl));
+if (!changesRes.ok) throw new Error("/api/changes failed");
+const changesJson = await changesRes.json();
+if (!Array.isArray(changesJson.changes)) {
+  throw new Error("/api/changes must return a changes array");
 }
 
 const ws = new WebSocket(url);

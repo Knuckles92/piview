@@ -1,6 +1,12 @@
 /* piview frontend — talks to the extension UI bridge via /api/* and event stream */
 
 import { bindToolbar, insertImage } from "./editor.js";
+import {
+  fetchChanges,
+  getDiffLayout,
+  renderDiffView,
+  setDiffLayout,
+} from "./diff-view.js";
 import { executionDashboardModel, formatDuration } from "./execution-dashboard.js";
 import {
   ensurePlanMarkdown,
@@ -40,6 +46,14 @@ const state = {
   executionExpandedId: null,
   /** Only auto-expand failed/active once per execution session */
   executionDidAutoExpand: false,
+  /** @type {string|null} selected Q&A response tab (null = live plan) */
+  activeResponseId: null,
+  /** @type {"unified"|"split"} */
+  diffLayout: getDiffLayout(),
+  /** @type {string|null} path currently shown in single-file diff dialog */
+  diffPath: null,
+  /** @type {boolean} true when viewing all changes */
+  diffAll: false,
 };
 
 const $ = (id) => document.getElementById(id);
@@ -59,6 +73,157 @@ function setDirty(v) {
 }
 
 const TAB_STORAGE_KEY = "piview.tab";
+const RESPONSE_TAB_STORAGE_KEY = "piview.activeResponseId";
+
+/** @returns {{ id: string, title: string, markdown: string, createdAt: number }|null} */
+function getActiveResponse() {
+  const id = state.activeResponseId;
+  if (!id) return null;
+  return (state.plan.responses || []).find((r) => r.id === id) ?? null;
+}
+
+function persistActiveResponseId() {
+  try {
+    if (state.activeResponseId) {
+      sessionStorage.setItem(RESPONSE_TAB_STORAGE_KEY, state.activeResponseId);
+    } else {
+      sessionStorage.removeItem(RESPONSE_TAB_STORAGE_KEY);
+    }
+  } catch {
+    /* ignore */
+  }
+}
+
+function clearActiveResponse() {
+  if (!state.activeResponseId) return;
+  state.activeResponseId = null;
+  persistActiveResponseId();
+}
+
+/** @param {string|null|undefined} id */
+function selectResponse(id) {
+  if (!id) {
+    clearActiveResponse();
+    return;
+  }
+  const found = (state.plan.responses || []).find((r) => r.id === id);
+  if (!found) {
+    clearActiveResponse();
+    return;
+  }
+  state.activeResponseId = id;
+  persistActiveResponseId();
+  if (state.editing) {
+    state.editing = false;
+    state.editingDraft = null;
+    state.planView = "preview";
+  }
+  if (state.tab !== "plan") setTab("plan");
+}
+
+/**
+ * @param {Array<{ id: string }>} prev
+ * @param {Array<{ id: string }>} next
+ * @returns {string|null} id of newest response that was not in prev
+ */
+function newestResponseId(prev, next) {
+  if (!next?.length) return null;
+  const prevIds = new Set((prev || []).map((r) => r.id));
+  for (let i = next.length - 1; i >= 0; i--) {
+    if (!prevIds.has(next[i].id)) return next[i].id;
+  }
+  return null;
+}
+
+/** Keep activeResponseId valid; auto-select newly arrived responses. */
+function syncActiveResponse(prevResponses, nextResponses, { autoSelectNew = true } = {}) {
+  const next = nextResponses || [];
+  if (autoSelectNew) {
+    const fresh = newestResponseId(prevResponses || [], next);
+    if (fresh) {
+      selectResponse(fresh);
+      return;
+    }
+  }
+  if (state.activeResponseId && !next.some((r) => r.id === state.activeResponseId)) {
+    clearActiveResponse();
+  }
+}
+
+function restoreActiveResponseId() {
+  try {
+    return sessionStorage.getItem(RESPONSE_TAB_STORAGE_KEY) || null;
+  } catch {
+    return null;
+  }
+}
+
+async function dismissResponse(id) {
+  if (!id) return;
+  const prev = state.plan.responses || [];
+  state.plan = {
+    ...state.plan,
+    responses: prev.filter((r) => r.id !== id),
+  };
+  if (state.activeResponseId === id) clearActiveResponse();
+  render();
+  try {
+    await api("/api/dismiss-response", { id });
+  } catch (e) {
+    showErr(e);
+  }
+}
+
+function renderResponseTabs() {
+  const nav = $("response-tabs");
+  if (!nav) return;
+  const responses = state.plan.responses || [];
+  nav.replaceChildren();
+  nav.classList.toggle("hidden", responses.length === 0);
+  for (const resp of responses) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "response-tab" + (state.activeResponseId === resp.id ? " active" : "");
+    btn.setAttribute("role", "tab");
+    btn.setAttribute("aria-selected", state.activeResponseId === resp.id ? "true" : "false");
+    btn.title = resp.title;
+    btn.dataset.responseId = resp.id;
+
+    const label = document.createElement("span");
+    label.className = "response-tab-label";
+    label.textContent = resp.title;
+    btn.append(label);
+
+    const close = document.createElement("span");
+    close.className = "response-tab-close";
+    close.setAttribute("role", "button");
+    close.setAttribute("aria-label", `Dismiss ${resp.title}`);
+    close.tabIndex = 0;
+    close.textContent = "×";
+    close.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      void dismissResponse(resp.id);
+    });
+    close.addEventListener("keydown", (ev) => {
+      if (ev.key === "Enter" || ev.key === " ") {
+        ev.preventDefault();
+        ev.stopPropagation();
+        void dismissResponse(resp.id);
+      }
+    });
+    btn.append(close);
+
+    btn.addEventListener("click", () => {
+      if (state.activeResponseId === resp.id) {
+        clearActiveResponse();
+      } else {
+        selectResponse(resp.id);
+      }
+      render();
+    });
+    nav.append(btn);
+  }
+}
 
 function showToast(message, kind = "ok", ms = 2800) {
   const host = $("toast-host");
@@ -111,6 +276,8 @@ let conflictPrompt = null;
 let lastKeptServerUpdatedAt = 0;
 
 async function resolveIncomingPlan(serverPlan) {
+  const prevResponses = state.plan.responses || [];
+
   if (isExecutionDashboard(serverPlan)) {
     const prev = state.selectedId;
     const wasExec = isExecutionDashboard(state.plan);
@@ -125,6 +292,7 @@ async function resolveIncomingPlan(serverPlan) {
     if (!serverPlan.steps?.some((s) => s.id === prev)) {
       state.selectedId = serverPlan.steps?.[0]?.id ?? null;
     }
+    syncActiveResponse(prevResponses, serverPlan.responses);
     setDirty(false);
     render();
     return;
@@ -136,21 +304,25 @@ async function resolveIncomingPlan(serverPlan) {
     if (!serverPlan.steps?.some((s) => s.id === prev)) {
       state.selectedId = serverPlan.steps?.[0]?.id ?? null;
     }
+    syncActiveResponse(prevResponses, serverPlan.responses);
     setDirty(false);
     render();
     return;
   }
 
-  // Always accept mode/cwd ticks without clobbering local body
-  const modeOnly =
-    (serverPlan.updatedAt || 0) <= (state.plan.updatedAt || 0) &&
+  const bodySame =
     JSON.stringify(serverPlan.steps || []) === JSON.stringify(state.plan.steps || []) &&
     (serverPlan.markdown || "") === (state.plan.markdown || "") &&
     (serverPlan.title || "") === (state.plan.title || "");
 
-  if (modeOnly) {
+  // Absorb responses/mode/cwd/execution without clobbering local body edits
+  if (bodySame) {
     state.plan.cwd = serverPlan.cwd || state.plan.cwd;
     state.plan.mode = serverPlan.mode || state.plan.mode;
+    state.plan.responses = serverPlan.responses;
+    if (serverPlan.execution) state.plan.execution = serverPlan.execution;
+    state.plan.updatedAt = Math.max(state.plan.updatedAt || 0, serverPlan.updatedAt || 0);
+    syncActiveResponse(prevResponses, serverPlan.responses);
     setDirty(state.dirty);
     render();
     return;
@@ -160,6 +332,8 @@ async function resolveIncomingPlan(serverPlan) {
   if ((serverPlan.updatedAt || 0) <= lastKeptServerUpdatedAt) {
     state.plan.cwd = serverPlan.cwd || state.plan.cwd;
     state.plan.mode = serverPlan.mode || state.plan.mode;
+    state.plan.responses = serverPlan.responses;
+    syncActiveResponse(prevResponses, serverPlan.responses);
     setDirty(state.dirty);
     render();
     return;
@@ -182,13 +356,16 @@ async function resolveIncomingPlan(serverPlan) {
     if (!serverPlan.steps?.some((s) => s.id === prev)) {
       state.selectedId = serverPlan.steps?.[0]?.id ?? null;
     }
+    syncActiveResponse(prevResponses, serverPlan.responses);
     setDirty(false);
     showToast("Loaded server plan", "ok");
     render();
   } else {
-    // Keep local; still absorb connection metadata
+    // Keep local; still absorb connection metadata + responses
     lastKeptServerUpdatedAt = serverPlan.updatedAt || Date.now();
     state.plan.cwd = serverPlan.cwd || state.plan.cwd;
+    state.plan.responses = serverPlan.responses;
+    syncActiveResponse(prevResponses, serverPlan.responses);
     showToast("Kept local edits", "warn");
     setDirty(true);
     render();
@@ -792,25 +969,28 @@ function isExecutionDashboard(plan = state.plan) {
 function updatePlanChrome() {
   const isPlan = state.tab === "plan";
   const locked = isExecutionDashboard();
-  const editing = isPlan && state.editing && !locked;
-  $("btn-edit-plan")?.classList.toggle("hidden", !isPlan || editing || locked);
+  const viewingResponse = isPlan && !!getActiveResponse();
+  const editing = isPlan && state.editing && !locked && !viewingResponse;
+  $("btn-edit-plan")?.classList.toggle("hidden", !isPlan || editing || locked || viewingResponse);
   $("btn-done-edit")?.classList.toggle("hidden", !editing);
   $("btn-add")?.classList.toggle("hidden", isPlan || locked);
-  $("export-menu")?.classList.toggle("hidden", !isPlan);
+  $("export-menu")?.classList.toggle("hidden", !isPlan || viewingResponse);
   $("btn-execute")?.classList.toggle("hidden", locked);
-  $("btn-apply")?.classList.toggle("hidden", locked);
+  $("btn-apply")?.classList.toggle("hidden", locked || viewingResponse);
   $("plan-editor-bar")?.classList.toggle("hidden", !editing);
-  if (!isPlan) closeExportMenu();
+  $("plan-title")?.classList.toggle("hidden", viewingResponse);
+  if (!isPlan || viewingResponse) closeExportMenu();
 
-  const view = state.editing ? state.planView : "preview";
+  const view = state.editing && !viewingResponse ? state.planView : "preview";
   $("view-plan")?.setAttribute("data-plan-mode", view);
+  $("view-plan")?.classList.toggle("viewing-response", viewingResponse);
 
   for (const btn of document.querySelectorAll("[data-plan-view]")) {
     btn.classList.toggle("active", btn.getAttribute("data-plan-view") === state.planView);
   }
 
   const showEditor = editing && (view === "edit" || view === "split");
-  const showPreview = !editing || view === "preview" || view === "split";
+  const showPreview = !editing || view === "preview" || view === "split" || viewingResponse;
   $("plan-editor")?.classList.toggle("hidden", !showEditor);
   $("plan-preview-pane")?.classList.toggle("hidden", !showPreview);
   $("plan-md")?.classList.toggle("hidden", !showPreview);
@@ -865,6 +1045,7 @@ function setPlanView(view) {
 
 function enterPlanEdit(preferredView) {
   if (isExecutionDashboard()) return;
+  clearActiveResponse();
   if (state.tab !== "plan") setTab("plan");
   if (!state.editing) {
     state.editing = true;
@@ -928,29 +1109,57 @@ function renderExecutionDashboard(plan) {
   $("execution-activity-count").textContent = `${model.toolCallsCompleted} complete`;
   $("execution-step-count").textContent = `${model.completed}/${model.total} complete`;
 
+  const viewAllBtn = $("btn-view-all-changes");
+  if (viewAllBtn) {
+    viewAllBtn.classList.toggle("hidden", model.changedFiles === 0);
+  }
+
   renderExecutionList($("execution-files-list"), model.recentFiles, "No successful file edits recorded yet.", (file) => {
     const row = document.createElement("li");
     row.className = "execution-list-row clickable";
-    row.title = "Click to copy path";
+    row.title = file.hasDiff === false ? "Open change (diff unavailable)" : "Open change";
     const path = document.createElement("code");
     path.textContent = file.path;
     const meta = document.createElement("span");
-    meta.textContent = `${file.operation} · ${file.count}×`;
-    row.append(path, meta);
-    row.addEventListener("click", () => copyPathChip(file.path));
+    meta.className = "execution-list-meta";
+    const op = document.createElement("span");
+    op.textContent = `${file.operation} · ${file.count}×`;
+    meta.append(op);
+    if (typeof file.additions === "number" || typeof file.deletions === "number") {
+      const add = document.createElement("span");
+      add.className = "diff-additions";
+      add.textContent = `+${file.additions ?? 0}`;
+      const del = document.createElement("span");
+      del.className = "diff-deletions";
+      del.textContent = `−${file.deletions ?? 0}`;
+      meta.append(add, del);
+    }
+    const copyBtn = document.createElement("button");
+    copyBtn.type = "button";
+    copyBtn.className = "btn-copy-path";
+    copyBtn.title = "Copy path";
+    copyBtn.textContent = "Copy";
+    copyBtn.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      void copyPathChip(file.path);
+    });
+    row.append(path, meta, copyBtn);
+    row.addEventListener("click", () => void openDiffViewer({ path: file.path }));
     return row;
   });
+  const changedPaths = new Set((plan.execution?.files || []).map((f) => f.path));
   renderExecutionList($("execution-activity-list"), model.recentActivity, "Waiting for tool activity…", (activity) => {
     const row = document.createElement("li");
-    row.className = `execution-list-row activity-${activity.status}${activity.path ? " clickable" : ""}`;
-    if (activity.path) row.title = "Click to copy path";
+    const canOpen = Boolean(activity.path && changedPaths.has(activity.path));
+    row.className = `execution-list-row activity-${activity.status}${canOpen ? " clickable" : ""}`;
+    if (canOpen) row.title = "Open change";
     const label = document.createElement("span");
     label.textContent = activity.summary || `${activity.toolName}${activity.path ? ` ${activity.path}` : ""}`;
     const meta = document.createElement("span");
     meta.textContent = activity.status === "running" ? "running" : activity.status === "error" ? "error" : "done";
     row.append(label, meta);
-    if (activity.path) {
-      row.addEventListener("click", () => copyPathChip(activity.path));
+    if (canOpen) {
+      row.addEventListener("click", () => void openDiffViewer({ path: activity.path }));
     }
     return row;
   });
@@ -1044,6 +1253,59 @@ async function copyPathChip(path) {
   }
 }
 
+function syncDiffLayoutButtons() {
+  for (const btn of document.querySelectorAll("[data-diff-layout]")) {
+    btn.classList.toggle("active", btn.getAttribute("data-diff-layout") === state.diffLayout);
+  }
+}
+
+/**
+ * @param {{ path?: string, all?: boolean }} opts
+ */
+async function openDiffViewer(opts = {}) {
+  const dlg = $("diff-dialog");
+  const body = $("diff-dialog-body");
+  const copyBtn = $("diff-copy-path");
+  if (!dlg || !body) return;
+
+  state.diffAll = Boolean(opts.all);
+  state.diffPath = opts.all ? null : (opts.path || null);
+  syncDiffLayoutButtons();
+
+  body.replaceChildren();
+  const loading = document.createElement("p");
+  loading.className = "diff-empty";
+  loading.textContent = "Loading changes…";
+  body.append(loading);
+
+  if (copyBtn) {
+    copyBtn.classList.toggle("hidden", state.diffAll || !state.diffPath);
+  }
+
+  if (!dlg.open) dlg.showModal();
+
+  try {
+    const changes = await fetchChanges(state.diffAll ? undefined : state.diffPath || undefined);
+    const title = state.diffAll
+      ? `All changes (${changes.length})`
+      : state.diffPath || "File change";
+    renderDiffView(body, { changes, layout: state.diffLayout, title });
+  } catch (e) {
+    body.replaceChildren();
+    const err = document.createElement("p");
+    err.className = "diff-unavailable";
+    err.textContent = e instanceof Error ? e.message : String(e);
+    body.append(err);
+  }
+}
+
+async function refreshOpenDiffViewer() {
+  const dlg = $("diff-dialog");
+  if (!dlg?.open) return;
+  if (state.diffAll) await openDiffViewer({ all: true });
+  else if (state.diffPath) await openDiffViewer({ path: state.diffPath });
+}
+
 function renderStatusBreakdown(container, counts) {
   container.replaceChildren();
   for (const status of ["done", "active", "pending", "skipped", "failed"]) {
@@ -1077,12 +1339,21 @@ function render() {
   $("plan-title").value = plan.title || "";
   $("conn").className = `dot ${state.connected ? "online" : "offline"}`;
 
+  // Drop stale active response if it was removed
+  if (state.activeResponseId && !(plan.responses || []).some((r) => r.id === state.activeResponseId)) {
+    clearActiveResponse();
+  }
+
+  const activeResponse = getActiveResponse();
   // Don't clobber the textarea while the user is typing
-  if (state.editing) {
+  if (activeResponse) {
+    renderPlanMarkdown(activeResponse.markdown);
+  } else if (state.editing) {
     renderPlanMarkdown(currentEditorMarkdown());
   } else {
     renderPlanMarkdown(planMarkdownSource(plan));
   }
+  renderResponseTabs();
   updatePlanChrome();
 
   if (isExecutionDashboard(plan)) {
@@ -1512,11 +1783,15 @@ function wire() {
   bindOutlineScrollSpy();
 
   $("tab-plan").onclick = () => {
+    clearActiveResponse();
     setTab("plan");
+    render();
   };
   $("tab-steps").onclick = () => {
+    clearActiveResponse();
     setTab("steps");
     closeFind();
+    render();
   };
 
   $("plan-find-input")?.addEventListener("input", () => runFind());
@@ -1779,6 +2054,36 @@ function wire() {
     if (input) input.value = "";
   });
 
+  $("btn-view-all-changes")?.addEventListener("click", () => {
+    void openDiffViewer({ all: true });
+  });
+
+  $("diff-dialog-close")?.addEventListener("click", () => {
+    $("diff-dialog")?.close();
+  });
+
+  $("diff-copy-path")?.addEventListener("click", () => {
+    if (state.diffPath) void copyPathChip(state.diffPath);
+  });
+
+  for (const btn of document.querySelectorAll("[data-diff-layout]")) {
+    btn.addEventListener("click", () => {
+      const layout = btn.getAttribute("data-diff-layout");
+      if (layout !== "unified" && layout !== "split") return;
+      state.diffLayout = layout;
+      setDiffLayout(layout);
+      syncDiffLayoutButtons();
+      void refreshOpenDiffViewer();
+    });
+  }
+  syncDiffLayoutButtons();
+
+  $("diff-dialog")?.addEventListener("click", (ev) => {
+    const dlg = $("diff-dialog");
+    if (!dlg || ev.target !== dlg) return;
+    dlg.close();
+  });
+
   $("btn-refine").onclick = () => {
     $("refine-text").value = "";
     $("refine-dialog").showModal();
@@ -1947,6 +2252,10 @@ function connectEvents() {
 
 wire();
 setTab(restoreTab());
+{
+  const savedResponseId = restoreActiveResponseId();
+  if (savedResponseId) state.activeResponseId = savedResponseId;
+}
 connectEvents();
 render();
 setInterval(() => {

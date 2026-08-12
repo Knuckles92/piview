@@ -3,7 +3,12 @@
   "version": "0.1.0",
   "description": "Plan-mode GUI companion for pi — TUI stays primary, /plangui opens a long-lived viewer",
   "type": "module",
-  "keywords": ["pi-package", "pi", "plan-mode", "gui"],
+  "keywords": [
+    "pi-package",
+    "pi",
+    "plan-mode",
+    "gui"
+  ],
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -25,7 +30,9 @@
     "scripts/"
   ],
   "pi": {
-    "extensions": ["./extensions/piview/index.ts"]
+    "extensions": [
+      "./extensions/piview/index.ts"
+    ]
   },
   "scripts": {
     "spike": "node scripts/spike-bridge.mjs",
@@ -33,9 +40,11 @@
     "test": "node scripts/smoke-protocol.mjs"
   },
   "dependencies": {
+    "diff": "^9.0.0",
     "ws": "^8.18.3"
   },
   "devDependencies": {
+    "@types/diff": "^7.0.2",
     "@types/node": "^22.13.10",
     "@types/ws": "^8.18.1",
     "typescript": "^5.8.2"

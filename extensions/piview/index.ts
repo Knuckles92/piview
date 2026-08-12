@@ -12,7 +12,8 @@ import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-a
 import { Type } from "typebox";
 import { openBrowser } from "./bridge/open.ts";
 import { createBridgeServer, type BridgeServer } from "./bridge/server.ts";
-import type { PlanOp, PlanState } from "./protocol.ts";
+import { ChangeStore } from "./changes.ts";
+import type { ExecutionFileOperation, PlanOp, PlanState } from "./protocol.ts";
 import {
 	UPDATE_PLAN_DESCRIPTION,
 	UPDATE_PLAN_GUIDELINES,
@@ -23,8 +24,10 @@ import {
 import {
 	PLAN_ENTRY_TYPE,
 	allStepsDone,
+	appendPlanResponse,
 	applyOps,
 	createStepsFromTitles,
+	dismissPlanResponse,
 	emptyPlanState,
 	beginExecutionTelemetry,
 	markStepStatus,
@@ -68,6 +71,7 @@ export default function piviewExtension(pi: ExtensionAPI): void {
 	let toolsBeforePlanMode: string[] | undefined;
 	let bridge: BridgeServer | undefined;
 	let lastCtx: ExtensionContext | undefined;
+	const changeStore = new ChangeStore();
 	// True when update_plan ran during the current agent run; the chat-text
 	// fallback parser must not overwrite a plan authored via the tool.
 	let planUpdatedByTool = false;
@@ -146,12 +150,18 @@ export default function piviewExtension(pi: ExtensionAPI): void {
 		publish(ctx);
 	}
 
+	function syncChangeStore(ctx: ExtensionContext): void {
+		changeStore.configure(ctx.cwd, ctx.sessionManager.getSessionId());
+		bridge?.setChangeStore(changeStore);
+	}
+
 	async function ensureBridge(ctx: ExtensionContext): Promise<BridgeServer> {
 		if (bridge) {
 			bridge.setSessionMeta({
 				sessionId: ctx.sessionManager.getSessionId(),
 				cwd: ctx.cwd,
 			});
+			syncChangeStore(ctx);
 			return bridge;
 		}
 
@@ -159,6 +169,7 @@ export default function piviewExtension(pi: ExtensionAPI): void {
 			sessionId: ctx.sessionManager.getSessionId(),
 			cwd: ctx.cwd,
 		});
+		syncChangeStore(ctx);
 
 		// New viewers get the current plan immediately, even after a viewer restart
 		bridge.onClientConnect((send) => {
@@ -201,6 +212,13 @@ export default function piviewExtension(pi: ExtensionAPI): void {
 					}
 					break;
 				}
+				case "dismiss_response": {
+					if (typeof msg.id === "string" && msg.id) {
+						state = dismissPlanResponse(state, msg.id);
+						publish(c);
+					}
+					break;
+				}
 			}
 		});
 
@@ -224,13 +242,68 @@ export default function piviewExtension(pi: ExtensionAPI): void {
 		ctx.ui.notify(`Plan GUI: ${uiUrl}`, "info");
 	}
 
+	/**
+	 * After a plan is authored, let the user review before any execution.
+	 * Opening the GUI must never start the agent — only an explicit Execute does.
+	 */
+	async function promptPlanReady(ctx: ExtensionContext): Promise<void> {
+		// Already viewing: hand off to the GUI; do not start execution.
+		if (bridge?.hasClients()) {
+			ctx.ui.notify("Plan ready — review in the piview GUI, then Execute when ready", "info");
+			return;
+		}
+
+		const OPEN = "Open plan GUI";
+		const STAY = "Stay in plan mode";
+		const REFINE = "Refine the plan";
+		const EXECUTE = "Execute the plan";
+
+		// Open first so Enter (default) reviews instead of running the plan.
+		const choice = await ctx.ui.select("Plan ready — what next?", [OPEN, STAY, REFINE, EXECUTE]);
+
+		switch (choice) {
+			case OPEN:
+				await openGui(ctx);
+				// Stay in planning; execution only via GUI Execute or a later explicit choice.
+				ctx.ui.notify("Plan GUI opened — press Execute there when ready", "info");
+				return;
+			case STAY:
+				return;
+			case REFINE: {
+				const refinement = await ctx.ui.editor("Refine the plan:", "");
+				if (refinement?.trim()) {
+					pi.sendUserMessage(refinement.trim(), { deliverAs: "followUp" });
+				}
+				return;
+			}
+			case EXECUTE: {
+				const ok = await ctx.ui.confirm(
+					"Execute plan?",
+					"Start executing this plan now? You can also open the GUI and press Execute there.",
+				);
+				if (ok) await startExecution(ctx);
+				return;
+			}
+			default:
+				// Cancelled / dismissed — remain in plan mode, do not execute.
+				return;
+		}
+	}
+
 	async function startExecution(ctx: ExtensionContext, fromStepId?: string): Promise<void> {
 		if (state.steps.length === 0) {
 			ctx.ui.notify("No plan steps to execute", "warning");
 			return;
 		}
+		if (state.mode === "executing") {
+			ctx.ui.notify("Plan is already executing", "info");
+			return;
+		}
 
 		state = beginExecutionTelemetry(setMode(state, "executing"));
+		changeStore.configure(ctx.cwd, ctx.sessionManager.getSessionId());
+		changeStore.clear();
+		bridge?.setChangeStore(changeStore);
 
 		const fromIdx = fromStepId ? state.steps.findIndex((s) => s.id === fromStepId) : -1;
 		if (fromIdx >= 0) {
@@ -489,11 +562,17 @@ export default function piviewExtension(pi: ExtensionAPI): void {
 			summary,
 		});
 		if (state.mode === "executing") {
+			const path = toolPath(event.args);
+			if (path && isFileEditTool(event.toolName)) {
+				const ctx = lastCtx;
+				if (ctx) changeStore.configure(ctx.cwd, ctx.sessionManager.getSessionId());
+				changeStore.captureBefore(event.toolCallId, path);
+			}
 			state = recordExecutionToolStart(state, {
 				toolCallId: event.toolCallId,
 				toolName: event.toolName,
 				summary,
-				path: toolPath(event.args),
+				path,
 			});
 			publish();
 		}
@@ -509,10 +588,15 @@ export default function piviewExtension(pi: ExtensionAPI): void {
 			isError: event.isError,
 		});
 		if (state.mode === "executing") {
+			const diff =
+				isFileEditTool(event.toolName)
+					? changeStore.commitAfter(event.toolCallId, event.toolName, event.isError)
+					: undefined;
 			state = recordExecutionToolEnd(state, {
 				toolCallId: event.toolCallId,
 				toolName: event.toolName,
 				isError: event.isError,
+				diff,
 			});
 			publish();
 		}
@@ -602,6 +686,7 @@ export default function piviewExtension(pi: ExtensionAPI): void {
 
 		// Chat-text fallback for when update_plan is unavailable. Skip it when the
 		// tool ran this turn — a chat summary must not clobber the authored plan.
+		// Non-plan replies are captured as response tabs instead of filling markdown.
 		const lastAssistant = [...event.messages].reverse().find(isAssistantMessage);
 		if (lastAssistant && !planUpdatedByTool) {
 			const text = getTextContent(lastAssistant);
@@ -616,37 +701,17 @@ export default function piviewExtension(pi: ExtensionAPI): void {
 					updatedAt: Date.now(),
 				};
 				publish(ctx);
-			} else if (markdown && !state.markdown) {
-				state = { ...state, markdown, updatedAt: Date.now() };
+			} else if (text.trim().length >= 20) {
+				state = appendPlanResponse(state, text);
 				publish(ctx);
 			}
 		}
 
 		if (state.steps.length === 0) return;
 
-		// GUI connected: let the user act there
-		if (bridge?.hasClients()) {
-			ctx.ui.notify("Plan ready — use the piview GUI to Execute or Refine", "info");
-			return;
-		}
-
-		const choice = await ctx.ui.select("Plan ready — what next?", [
-			"Execute the plan",
-			"Open plan GUI",
-			"Stay in plan mode",
-			"Refine the plan",
-		]);
-
-		if (choice === "Execute the plan") {
-			await startExecution(ctx);
-		} else if (choice === "Open plan GUI") {
-			await openGui(ctx);
-		} else if (choice === "Refine the plan") {
-			const refinement = await ctx.ui.editor("Refine the plan:", "");
-			if (refinement?.trim()) {
-				pi.sendUserMessage(refinement.trim(), { deliverAs: "followUp" });
-			}
-		}
+		// Plan is ready for review. Never auto-start execution from this prompt —
+		// Execute must be an explicit choice (TUI) or a GUI Execute click.
+		await promptPlanReady(ctx);
 	});
 
 	pi.on("agent_settled", async (_event, ctx) => {
@@ -665,6 +730,10 @@ function toolPath(args: unknown): string | undefined {
 	if (!args || typeof args !== "object") return undefined;
 	const path = (args as Record<string, unknown>).path;
 	return typeof path === "string" ? path : undefined;
+}
+
+function isFileEditTool(toolName: string): toolName is ExecutionFileOperation {
+	return toolName === "edit" || toolName === "write";
 }
 
 function summarizeArgs(toolName: string, args: unknown): string {

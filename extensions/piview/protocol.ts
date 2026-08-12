@@ -24,6 +24,12 @@ export interface ExecutionFile {
 	operation: ExecutionFileOperation;
 	count: number;
 	updatedAt: number;
+	/** Cumulative line additions across the execution run (when a diff was captured). */
+	additions?: number;
+	/** Cumulative line deletions across the execution run (when a diff was captured). */
+	deletions?: number;
+	/** True when a before/after snapshot is available via /api/changes. */
+	hasDiff?: boolean;
 }
 
 /** Bounded execution history used by reconnecting viewers to render live metrics. */
@@ -47,6 +53,14 @@ export interface PlanStep {
 	notes?: string;
 }
 
+/** A non-plan assistant reply captured during planning (Q&A). */
+export interface PlanResponse {
+	id: string;
+	title: string;
+	markdown: string;
+	createdAt: number;
+}
+
 export interface PlanState {
 	v: 1;
 	mode: PlanMode;
@@ -60,6 +74,8 @@ export interface PlanState {
 	cwd?: string;
 	/** Optional v1-compatible execution history; absent on older saved plans. */
 	execution?: ExecutionTelemetry;
+	/** Optional Q&A replies captured during planning; absent on older saved plans. */
+	responses?: PlanResponse[];
 }
 
 export type PlanOp =
@@ -85,6 +101,7 @@ export type ClientMessage =
 	| { v: 1; type: "execute"; fromStepId?: string }
 	| { v: 1; type: "refine"; text: string }
 	| { v: 1; type: "set_mode"; mode: "off" | "planning" }
+	| { v: 1; type: "dismiss_response"; id: string }
 	| { v: 1; type: "ping" };
 
 export function isClientMessage(value: unknown): value is ClientMessage {

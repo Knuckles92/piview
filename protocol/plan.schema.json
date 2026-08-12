@@ -12,6 +12,7 @@
     { "$ref": "#/$defs/execute" },
     { "$ref": "#/$defs/refine" },
     { "$ref": "#/$defs/set_mode" },
+    { "$ref": "#/$defs/dismiss_response" },
     { "$ref": "#/$defs/activity" },
     { "$ref": "#/$defs/status" },
     { "$ref": "#/$defs/ping" },
@@ -65,7 +66,10 @@
         "path": { "type": "string" },
         "operation": { "type": "string", "enum": ["edit", "write"] },
         "count": { "type": "integer", "minimum": 1 },
-        "updatedAt": { "type": "integer" }
+        "updatedAt": { "type": "integer" },
+        "additions": { "type": "integer", "minimum": 0 },
+        "deletions": { "type": "integer", "minimum": 0 },
+        "hasDiff": { "type": "boolean" }
       }
     },
     "ExecutionTelemetry": {
@@ -79,6 +83,16 @@
         "toolCallsFailed": { "type": "integer", "minimum": 0 },
         "activities": { "type": "array", "items": { "$ref": "#/$defs/ExecutionActivity" } },
         "files": { "type": "array", "items": { "$ref": "#/$defs/ExecutionFile" } }
+      }
+    },
+    "PlanResponse": {
+      "type": "object",
+      "required": ["id", "title", "markdown", "createdAt"],
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "markdown": { "type": "string" },
+        "createdAt": { "type": "integer" }
       }
     },
     "PlanState": {
@@ -100,6 +114,11 @@
         "execution": {
           "$ref": "#/$defs/ExecutionTelemetry",
           "description": "Optional, bounded execution history. Completion is derived as (done + skipped) / total; failed steps remain visible separately."
+        },
+        "responses": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/PlanResponse" },
+          "description": "Optional Q&A replies captured during planning; absent on older saved plans."
         }
       }
     },
@@ -197,6 +216,15 @@
         "v": { "const": 1 },
         "type": { "const": "set_mode" },
         "mode": { "type": "string", "enum": ["off", "planning"] }
+      }
+    },
+    "dismiss_response": {
+      "type": "object",
+      "required": ["v", "type", "id"],
+      "properties": {
+        "v": { "const": 1 },
+        "type": { "const": "dismiss_response" },
+        "id": { "type": "string" }
       }
     },
     "activity": {

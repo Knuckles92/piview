@@ -4,10 +4,14 @@ import type {
 	ExecutionFileOperation,
 	PlanMode,
 	PlanOp,
+	PlanResponse,
 	PlanState,
 	PlanStep,
 	PlanStepStatus,
 } from "./protocol.ts";
+
+/** Max Q&A responses retained on PlanState (oldest dropped). */
+export const MAX_PLAN_RESPONSES = 20;
 
 export const PLAN_ENTRY_TYPE = "piview-plan";
 
@@ -120,6 +124,7 @@ export function replacePlan(state: PlanState, incoming: PlanState): PlanState {
 		sessionId: incoming.sessionId ?? state.sessionId,
 		cwd: incoming.cwd ?? state.cwd,
 		execution: incoming.execution ?? state.execution,
+		responses: incoming.responses ?? state.responses,
 		updatedAt: Date.now(),
 		steps: renumber(
 			incoming.steps.map((s) => ({
@@ -128,6 +133,44 @@ export function replacePlan(state: PlanState, incoming: PlanState): PlanState {
 				status: s.status ?? "pending",
 			})),
 		),
+	};
+}
+
+/** Derive a short tab title from assistant markdown. */
+export function responseTitleFromMarkdown(markdown: string): string {
+	const trimmed = markdown.trim();
+	const heading = trimmed.match(/^#{1,2}\s+(.+)$/m);
+	const raw = (heading?.[1] ?? trimmed.split(/\r?\n/)[0] ?? "Response").trim();
+	const cleaned = raw.replace(/^#+\s*/, "").replace(/\*+/g, "").trim();
+	if (cleaned.length <= 40) return cleaned || "Response";
+	return cleaned.slice(0, 37).trimEnd() + "…";
+}
+
+/** Append a Q&A response, bounded to MAX_PLAN_RESPONSES. */
+export function appendPlanResponse(state: PlanState, markdown: string, now = Date.now()): PlanState {
+	const text = markdown.trim();
+	if (!text) return state;
+	const entry: PlanResponse = {
+		id: newStepId(),
+		title: responseTitleFromMarkdown(text),
+		markdown: text,
+		createdAt: now,
+	};
+	const prev = state.responses ?? [];
+	const responses = [...prev, entry].slice(-MAX_PLAN_RESPONSES);
+	return { ...state, responses, updatedAt: now };
+}
+
+/** Remove a captured Q&A response by id. */
+export function dismissPlanResponse(state: PlanState, id: string): PlanState {
+	const prev = state.responses;
+	if (!prev?.length) return state;
+	const responses = prev.filter((r) => r.id !== id);
+	if (responses.length === prev.length) return state;
+	return {
+		...state,
+		responses: responses.length ? responses : undefined,
+		updatedAt: Date.now(),
 	};
 }
 
@@ -222,7 +265,12 @@ export function recordExecutionToolStart(
 /** Finalize a recorded tool call and count successful edit/write operations by path. */
 export function recordExecutionToolEnd(
 	state: PlanState,
-	input: { toolCallId: string; toolName: string; isError?: boolean },
+	input: {
+		toolCallId: string;
+		toolName: string;
+		isError?: boolean;
+		diff?: { additions: number; deletions: number; hasDiff: boolean };
+	},
 	now = Date.now(),
 ): PlanState {
 	const execution = state.execution;
@@ -242,7 +290,7 @@ export function recordExecutionToolEnd(
 		? execution.activities.map((item) => (item.toolCallId === input.toolCallId ? activity : item))
 		: [...execution.activities, activity].slice(-MAX_EXECUTION_ACTIVITIES);
 	const files = !input.isError && isFileEdit(activity) && activity.path
-		? recordEditedFile(execution.files, activity.path, activity.toolName, now)
+		? recordEditedFile(execution.files, activity.path, activity.toolName, now, input.diff)
 		: execution.files;
 	return {
 		...state,
@@ -267,12 +315,42 @@ function recordEditedFile(
 	path: string,
 	operation: ExecutionFileOperation,
 	now: number,
+	diff?: { additions: number; deletions: number; hasDiff: boolean },
 ) {
 	const existing = files.find((file) => file.path === path);
 	if (existing) {
 		return files.map((file) =>
-			file.path === path ? { ...file, operation, count: file.count + 1, updatedAt: now } : file,
+			file.path === path
+				? {
+						...file,
+						operation,
+						count: file.count + 1,
+						updatedAt: now,
+						...(diff
+							? {
+									additions: diff.additions,
+									deletions: diff.deletions,
+									hasDiff: diff.hasDiff,
+								}
+							: {}),
+					}
+				: file,
 		);
 	}
-	return [...files, { path, operation, count: 1, updatedAt: now }].slice(-MAX_EXECUTION_FILES);
+	return [
+		...files,
+		{
+			path,
+			operation,
+			count: 1,
+			updatedAt: now,
+			...(diff
+				? {
+						additions: diff.additions,
+						deletions: diff.deletions,
+						hasDiff: diff.hasDiff,
+					}
+				: {}),
+		},
+	].slice(-MAX_EXECUTION_FILES);
 }

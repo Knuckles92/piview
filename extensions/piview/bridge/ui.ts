@@ -17,6 +17,7 @@ import { tmpdir } from "node:os";
 import { basename, extname, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { IncomingMessage, ServerResponse } from "node:http";
+import type { ChangeStore } from "../changes.ts";
 import type { ClientMessage, PlanState, ServerMessage } from "../protocol.ts";
 
 const MAX_ASSET_BYTES = 5 << 20; // 5 MiB
@@ -50,6 +51,7 @@ export interface UiHub {
 	setCwd(cwd: string): void;
 	setPlan(state: PlanState): void;
 	setConnected(ok: boolean): void;
+	setChangeStore(store: ChangeStore | null): void;
 	/** Fan out a bridge ServerMessage to SSE subscribers. */
 	onBroadcast(msg: ServerMessage): void;
 	/** True when at least one browser EventSource is connected. */
@@ -72,6 +74,7 @@ export function createUiHub(opts: {
 	};
 	let connected = true;
 	let tempAssetDir = "";
+	let changeStore: ChangeStore | null = null;
 	const subs = new Set<(chunk: string) => void>();
 
 	function emit(event: string, payload: unknown): void {
@@ -230,6 +233,21 @@ export function createUiHub(opts: {
 		}
 	}
 
+	async function handleDismissResponse(req: IncomingMessage, res: ServerResponse): Promise<void> {
+		try {
+			const raw = await readBody(req, 64 << 10);
+			const body = JSON.parse(raw.toString("utf8")) as { id?: string };
+			if (typeof body.id !== "string" || !body.id) {
+				writeJson(res, 400, { error: "missing id" });
+				return;
+			}
+			await opts.onMessage({ v: 1, type: "dismiss_response", id: body.id });
+			writeJson(res, 200, { ok: true });
+		} catch (err) {
+			writeJson(res, 502, { error: err instanceof Error ? err.message : String(err) });
+		}
+	}
+
 	async function handleUploadAsset(req: IncomingMessage, res: ServerResponse): Promise<void> {
 		try {
 			const data = await readBody(req, MAX_ASSET_BYTES + 512);
@@ -297,6 +315,24 @@ export function createUiHub(opts: {
 		createReadStream(full).pipe(res);
 	}
 
+	function handleChanges(_req: IncomingMessage, res: ServerResponse, url: URL): void {
+		if (!changeStore) {
+			writeJson(res, 200, { changes: [] });
+			return;
+		}
+		const pathParam = url.searchParams.get("path");
+		if (pathParam != null && pathParam !== "") {
+			const change = changeStore.get(pathParam);
+			if (!change) {
+				writeJson(res, 404, { error: "change not found" });
+				return;
+			}
+			writeJson(res, 200, { change });
+			return;
+		}
+		writeJson(res, 200, { changes: changeStore.list() });
+	}
+
 	const api: UiHub = {
 		setCwd(next) {
 			cwd = next;
@@ -312,6 +348,10 @@ export function createUiHub(opts: {
 		setConnected(ok) {
 			connected = ok;
 			emit("conn", { connected, cwd });
+		},
+
+		setChangeStore(store) {
+			changeStore = store;
 		},
 
 		onBroadcast(msg) {
@@ -371,8 +411,16 @@ export function createUiHub(opts: {
 				void handleRefine(req, res);
 				return true;
 			}
+			if (path === "/api/dismiss-response" && method === "POST") {
+				void handleDismissResponse(req, res);
+				return true;
+			}
 			if (path === "/api/assets" && method === "POST") {
 				void handleUploadAsset(req, res);
+				return true;
+			}
+			if (path === "/api/changes" && method === "GET") {
+				handleChanges(req, res, url);
 				return true;
 			}
 			if (path.startsWith("/assets/") && (method === "GET" || method === "HEAD")) {

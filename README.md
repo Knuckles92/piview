@@ -101,6 +101,7 @@ Inside pi:
 | Env | Meaning |
 |-----|---------|
 | `PIVIEW_AUTO=1` | Auto-open GUI on session start |
+| `PIVIEW_BROWSER_MODE=app` | Open the GUI as a dedicated chromeless app window (default: new tab in your default browser) |
 
 ## Spike (no pi required)
 

@@ -1,6 +1,9 @@
 /**
  * Open a localhost URL in the user's browser.
- * Prefers Chrome/Chromium app mode for a chromeless feel (ported from Go open.go).
+ *
+ * Default is a regular new tab in the user's default browser. Set
+ * `PIVIEW_BROWSER_MODE=app` to opt into a dedicated chromeless app window
+ * (Chrome/Chromium/Edge/Brave on macOS and Linux; ignored elsewhere).
  */
 
 import { spawn } from "node:child_process";
@@ -48,11 +51,20 @@ function which(bin: string): string | undefined {
 	return undefined;
 }
 
-/** Open url in a browser window. Returns true if a launcher was started. */
-export async function openBrowser(url: string, _title = "piview"): Promise<boolean> {
+export type BrowserOpenMode = "tab" | "app";
+
+/** Read PIVIEW_BROWSER_MODE ("tab" | "app"). Defaults to "tab". */
+export function getBrowserOpenMode(): BrowserOpenMode {
+	return (process.env.PIVIEW_BROWSER_MODE ?? "").trim().toLowerCase() === "app" ? "app" : "tab";
+}
+
+/** Open url in the browser. Returns true if a launcher was started. */
+export async function openBrowser(url: string, _title = "piview", mode: BrowserOpenMode = getBrowserOpenMode()): Promise<boolean> {
 	const os = platform();
 
 	if (os === "darwin") {
+		// Default browser handles it; opens a new tab when the browser is running.
+		if (mode === "tab") return run("open", [url]);
 		for (const app of ["Google Chrome", "Chromium", "Microsoft Edge", "Brave Browser"]) {
 			if (await run("open", ["-na", app, "--args", `--app=${url}`, "--new-window"], { wait: true })) {
 				return true;
@@ -68,9 +80,11 @@ export async function openBrowser(url: string, _title = "piview"): Promise<boole
 			const cmd = which("cmd.exe");
 			if (cmd) return run(cmd, ["/c", "start", "", url]);
 		}
-		for (const bin of ["google-chrome", "chromium", "chromium-browser"]) {
-			const path = which(bin);
-			if (path) return run(path, [`--app=${url}`]);
+		if (mode === "app") {
+			for (const bin of ["google-chrome", "chromium", "chromium-browser"]) {
+				const path = which(bin);
+				if (path) return run(path, [`--app=${url}`]);
+			}
 		}
 		const xdg = which("xdg-open");
 		if (xdg) return run(xdg, [url]);

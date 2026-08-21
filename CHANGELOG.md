@@ -24,6 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Plan GUI now opens as a new tab in the default browser by default; set `PIVIEW_BROWSER_MODE=app` to opt into the previous dedicated chromeless app window
 - Plan GUI no longer requires a separate Go companion binary; `/piview` opens the browser against the extension’s local HTTP server
 - Removed `postinstall` / `build:viewer` Go build step and `PIVIEW_BIN` / `PIVIEW_SKIP_VIEWER_BUILD` env vars
 - Plan-ready prompt: **Open plan GUI** is the default action; opening the GUI no longer risks starting execution. Execute requires an explicit TUI confirm or the GUI Execute button
